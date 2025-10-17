@@ -1,6 +1,41 @@
-composer.phar
+# Build artefacts
+/node_modules/
+/dist/
 /vendor/
+/logs/
 
-# Commit your application's lock file https://getcomposer.org/doc/01-basic-usage.md#commit-your-composer-lock-file-to-version-control
-# You may choose to ignore a library lock file http://getcomposer.org/doc/02-libraries.md#lock-file
-# composer.lock
+# OS artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.TemporaryItems
+.apdisk
+.DocumentRevisions-V100
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.metadata_never_index
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*~
+.nfs*
+
+# Logs, caches, temp files, backups, etc.
+*.log
+*.cache
+*.tmp
+*.temp
+*.bak
+*.swp
+*.old
+*.orig
+
+# Secrets and environment variables
+.env
+.secrets
