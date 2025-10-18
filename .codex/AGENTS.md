@@ -6,7 +6,11 @@
 > **License:** MIT  
 >  
 > For extended developer specifications, see  
-> ➜ `/docs/dev/MANUAL.md`
+> ➜ [/docs/dev/MANUAL.md](../docs/dev/MANUAL.md)
+> 
+> For quick command reference, see  
+> ➜ [/README.md](../README.md)
+> 
 
 ---
 
@@ -151,7 +155,7 @@ Two major Agents handle communication:
 
 | Agent | Description |
 |--------|--------------|
-| **CLI Agent** | Parses and executes all console commands. Supports nested verbs, e.g. `list projects`, `export project:entity`. |
+| **CLI Agent** | Parses and executes all console commands. Supports nested verbs, e.g. `list projects`, `export project entity:version, entity2:commit_hash`. |
 | **REST Agent** | Provides an HTTP interface for remote access (served through `api.php`). Authentication via API key. |
 
 Each Agent uses the same Command Registry, ensuring consistent behavior across interfaces.
@@ -165,6 +169,10 @@ Each Agent uses the same Command Registry, ensuring consistent behavior across i
 
 The command layer defines a single, human-readable syntax that is valid across **all runtime contexts**.  
 Each command can be expressed as a simple, space-delimited instruction, optionally followed by structured JSON data.
+> Note:
+> `export` supports comma-seperated values for entity to create custom slices: `export project entity1,entity2,entity3,entity4`
+> Entities can be referenced with `entity:version` or `entity:commit_hash` - hashes must not contain any special chars and should be lowercase hexadecimal
+
 
 ### 🧭 Universal Command Format
 
@@ -342,7 +350,8 @@ Codex should:
 - **Automatically generate tests** that assert expected responses for common commands  
   (e.g., `list projects`, `save entity`, `export project`).  
 - **Ensure deterministic hash generation** for version control validation.  
-- **Never rely on global state** — all runtime data flows through injected or event-based contexts.  
+- **Never rely on global state** — all runtime data flows through injected or event-based contexts.
+- All hashes should be consistent SHA-256 (lowercase hexadecimal)  
 
 ---
 
