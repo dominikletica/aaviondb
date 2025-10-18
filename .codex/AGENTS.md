@@ -18,7 +18,7 @@
 ---
 
 ## Codex Workflow Guidance
-- Keep documentation canonical: update relevant partials under `docs/dev/partials/` and `docs/dev/core-architecture.md` whenever behaviour changes. Flag drafts explicitly.
+- Keep documentation canonical: update relevant partials under `docs/dev/partials/` and `docs/dev/partials/core-architecture.md` whenever behaviour changes. Flag drafts explicitly.
 - Record architectural decisions and outstanding TODOs in [`.codex/NOTES.md`](./NOTES.md); summarise user-facing changes in [`CHANGELOG.md`](../CHANGELOG.md).
 - Prefer non-throwing flows: wrap operations in `try/catch`, log via Monolog, return unified `CommandResponse` payloads.
 - Maintain consistent entry-point behaviour (REST/CLI/PHP) and ensure tests/diagnostics are updated alongside code.
