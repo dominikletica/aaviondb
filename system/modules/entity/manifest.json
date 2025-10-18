@@ -1,0 +1,15 @@
+{
+    "name": "Entity Agent",
+    "slug": "entity",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage entities and versions (list/show/save/delete/restore).",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use"
+    ]
+}

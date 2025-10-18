@@ -137,15 +137,7 @@ final class BrainRepository
                 continue;
             }
 
-            $result[$slug] = [
-                'slug' => $slug,
-                'title' => $project['title'] ?? null,
-                'created_at' => $project['created_at'] ?? null,
-                'updated_at' => $project['updated_at'] ?? null,
-                'entity_count' => isset($project['entities']) && \is_array($project['entities'])
-                    ? \count($project['entities'])
-                    : 0,
-            ];
+            $result[$slug] = $this->summarizeProject($slug, $project);
         }
 
         return $result;
@@ -163,18 +155,295 @@ final class BrainRepository
         $result = [];
 
         foreach ($entities as $entitySlug => $entity) {
-            if (!\is_array($entity) || !isset($entity['versions']) || !\is_array($entity['versions'])) {
+            if (!\is_array($entity)) {
                 continue;
             }
 
-            $result[$entitySlug] = [
-                'slug' => $entitySlug,
-                'active_version' => $entity['active_version'] ?? null,
-                'version_count' => \count($entity['versions']),
+            $result[$entitySlug] = $this->summarizeEntity($entitySlug, $entity);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listEntityVersions(string $projectSlug, string $entitySlug): array
+    {
+        $project = $this->getProject($projectSlug);
+        $slug = $this->normalizeKey($entitySlug);
+
+        if (!isset($project['entities'][$slug]) || !\is_array($project['entities'][$slug])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $entity = $project['entities'][$slug];
+        $versions = isset($entity['versions']) && \is_array($entity['versions']) ? $entity['versions'] : [];
+
+        $result = [];
+        foreach ($versions as $versionKey => $record) {
+            if (!\is_array($record)) {
+                continue;
+            }
+
+            $versionId = (string) ($record['version'] ?? $versionKey);
+            $result[] = [
+                'version' => $versionId,
+                'status' => $record['status'] ?? 'inactive',
+                'hash' => $record['hash'] ?? null,
+                'commit' => $record['commit'] ?? null,
+                'committed_at' => $record['committed_at'] ?? null,
             ];
         }
 
         return $result;
+    }
+
+    /**
+     * Creates a new project within the active brain.
+     */
+    public function createProject(string $projectSlug, ?string $title = null): array
+    {
+        $slug = $this->normalizeKey($projectSlug);
+        $brain = $this->loadActiveBrain();
+
+        if (isset($brain['projects'][$slug])) {
+            throw new StorageException(sprintf('Project "%s" already exists.', $projectSlug));
+        }
+
+        $timestamp = $this->timestamp();
+        $project = $this->defaultProject($slug, $timestamp);
+        if ($title !== null && $title !== '') {
+            $project['title'] = $title;
+        }
+
+        $brain['projects'][$slug] = $project;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.project.created', [
+            'project' => $slug,
+            'title' => $project['title'],
+        ]);
+
+        return $this->projectReport($slug, false);
+    }
+
+    public function archiveProject(string $projectSlug): array
+    {
+        $slug = $this->normalizeKey($projectSlug);
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slug])) {
+            throw new StorageException(sprintf('Project "%s" does not exist.', $projectSlug));
+        }
+
+        $timestamp = $this->timestamp();
+        $brain['projects'][$slug]['status'] = 'archived';
+        $brain['projects'][$slug]['archived_at'] = $timestamp;
+        $brain['projects'][$slug]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.project.archived', [
+            'project' => $slug,
+        ]);
+
+        return $this->projectReport($slug, false);
+    }
+
+    public function deleteProject(string $projectSlug, bool $purgeCommits = true): void
+    {
+        $slug = $this->normalizeKey($projectSlug);
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slug])) {
+            throw new StorageException(sprintf('Project "%s" does not exist.', $projectSlug));
+        }
+
+        unset($brain['projects'][$slug]);
+
+        if ($purgeCommits && isset($brain['commits']) && is_array($brain['commits'])) {
+            foreach ($brain['commits'] as $hash => $commit) {
+                if (!is_array($commit)) {
+                    continue;
+                }
+
+                if (($commit['project'] ?? null) === $slug) {
+                    unset($brain['commits'][$hash]);
+                }
+            }
+        }
+
+        $brain['meta']['updated_at'] = $this->timestamp();
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.project.deleted', [
+            'project' => $slug,
+            'purged_commits' => $purgeCommits,
+        ]);
+    }
+
+    public function projectReport(string $projectSlug, bool $includeEntities = true): array
+    {
+        $slug = $this->normalizeKey($projectSlug);
+        $project = $this->getProject($slug);
+
+        $summary = $this->summarizeProject($slug, $project);
+
+        if ($includeEntities) {
+            $summary['entities'] = \array_values($this->listEntities($slug));
+        }
+
+        return $summary;
+    }
+
+    public function entityReport(string $projectSlug, string $entitySlug, bool $includeVersions = true): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $slugEntity = $this->normalizeKey($entitySlug);
+
+        $project = $this->getProject($slugProject);
+
+        if (!isset($project['entities'][$slugEntity]) || !\is_array($project['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $entity = $project['entities'][$slugEntity];
+        $summary = $this->summarizeEntity($slugEntity, $entity);
+
+        if ($includeVersions) {
+            $summary['versions'] = $this->listEntityVersions($slugProject, $slugEntity);
+        }
+
+        return $summary;
+    }
+
+    public function archiveEntity(string $projectSlug, string $entitySlug): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $slugEntity = $this->normalizeKey($entitySlug);
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $entity = &$brain['projects'][$slugProject]['entities'][$slugEntity];
+        $timestamp = $this->timestamp();
+
+        $entity['status'] = 'archived';
+        $entity['archived_at'] = $timestamp;
+        $entity['updated_at'] = $timestamp;
+
+        if (isset($entity['active_version']) && isset($entity['versions'][$entity['active_version']])) {
+            $entity['versions'][$entity['active_version']]['status'] = 'archived';
+        }
+
+        $entity['active_version'] = null;
+
+        $brain['projects'][$slugProject]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.archived', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+        ]);
+
+        return $this->entityReport($slugProject, $slugEntity, false);
+    }
+
+    public function deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true): void
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $slugEntity = $this->normalizeKey($entitySlug);
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        unset($brain['projects'][$slugProject]['entities'][$slugEntity]);
+
+        if ($purgeCommits && isset($brain['commits']) && \is_array($brain['commits'])) {
+            foreach ($brain['commits'] as $hash => $commit) {
+                if (!\is_array($commit)) {
+                    continue;
+                }
+
+                if (($commit['project'] ?? null) === $slugProject && ($commit['entity'] ?? null) === $slugEntity) {
+                    unset($brain['commits'][$hash]);
+                }
+            }
+        }
+
+        $timestamp = $this->timestamp();
+        $brain['projects'][$slugProject]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.deleted', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'purged_commits' => $purgeCommits,
+        ]);
+    }
+
+    public function restoreEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $slugEntity = $this->normalizeKey($entitySlug);
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $entity = &$brain['projects'][$slugProject]['entities'][$slugEntity];
+        $versionKey = $this->resolveEntityVersionKey($brain, $slugProject, $slugEntity, $entity, $reference);
+
+        if ($versionKey === null) {
+            throw new StorageException(sprintf('Unknown entity reference "%s".', $reference));
+        }
+
+        foreach ($entity['versions'] as $key => &$record) {
+            if (!\is_array($record)) {
+                continue;
+            }
+
+            $record['status'] = ($key === $versionKey) ? 'active' : 'inactive';
+        }
+        unset($record);
+
+        $entity['active_version'] = $versionKey;
+        $entity['status'] = 'active';
+        $entity['archived_at'] = null;
+        $entity['updated_at'] = $this->timestamp();
+
+        $brain['projects'][$slugProject]['updated_at'] = $entity['updated_at'];
+        $brain['meta']['updated_at'] = $entity['updated_at'];
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.restored', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => $versionKey,
+        ]);
+
+        return $this->entityReport($slugProject, $slugEntity, true);
     }
 
     /**
@@ -209,11 +478,15 @@ final class BrainRepository
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
                 'active_version' => null,
+                'status' => 'active',
+                'archived_at' => null,
                 'versions' => [],
             ];
         }
 
         $entity = &$project['entities'][$slugEntity];
+        $entity['status'] = 'active';
+        $entity['archived_at'] = null;
         $currentVersion = $this->determineNextVersion($entity['versions'] ?? []);
         $hash = CanonicalJson::hash($payload);
 
@@ -434,6 +707,193 @@ final class BrainRepository
         }
 
         return $brain['config'];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listBrains(): array
+    {
+        $this->ensureSystemBrain();
+
+        $activeSlug = $this->activeBrain() ?? $this->determineActiveBrainSlug();
+
+        $brains = [];
+        $brains[] = $this->describeBrainFile(
+            'system',
+            $this->paths->systemBrain(),
+            $activeSlug === 'system',
+            'system'
+        );
+
+        $storage = $this->paths->userStorage();
+        if (\is_dir($storage)) {
+            $files = \glob($storage . DIRECTORY_SEPARATOR . '*.brain') ?: [];
+            \sort($files);
+
+            foreach ($files as $file) {
+                $slug = \basename($file, '.brain');
+                $brains[] = $this->describeBrainFile($slug, $file, $slug === $activeSlug, 'user');
+            }
+        }
+
+        return $brains;
+    }
+
+    /**
+     * Creates a new user brain; optionally activates it.
+     *
+     * @return array<string, mixed>
+     */
+    public function createBrain(string $slug, bool $activate = false): array
+    {
+        $slug = $this->sanitizeBrainSlug($slug);
+        $path = $this->paths->userBrain($slug);
+
+        if (\is_file($path)) {
+            throw new StorageException(\sprintf('Brain "%s" already exists.', $slug));
+        }
+
+        $brain = $this->defaultUserBrain($slug);
+        $this->writeBrain($path, $brain);
+        $this->events->emit('brain.created', ['slug' => $slug, 'type' => 'user']);
+
+        if ($activate) {
+            $this->setActiveBrain($slug);
+        }
+
+        return $this->describeBrainFile($slug, $path, $activate, 'user');
+    }
+
+    /**
+     * Switches the active brain.
+     */
+    public function setActiveBrain(string $slug): array
+    {
+        $slug = $this->sanitizeBrainSlug($slug);
+
+        if ($slug === 'system') {
+            throw new StorageException('System brain cannot be the active user brain.');
+        }
+
+        $path = $this->paths->userBrain($slug);
+        if (!\is_file($path)) {
+            throw new StorageException(\sprintf('Brain "%s" does not exist.', $slug));
+        }
+
+        $this->updateSystemBrain(function (array &$brain) use ($slug): void {
+            $brain['state']['active_brain'] = $slug;
+        });
+
+        $this->activeBrainSlug = $slug;
+        $this->activeBrainPath = $path;
+        $this->activeBrainData = null;
+
+        return $this->describeBrainFile($slug, $path, true, 'user');
+    }
+
+    /**
+     * Creates a snapshot copy of the specified brain (or active brain if null).
+     *
+     * @return array<string, mixed>
+     */
+    public function backupBrain(?string $slug = null, ?string $label = null): array
+    {
+        if ($slug === null || $slug === '') {
+            $slug = $this->activeBrain() ?? $this->determineActiveBrainSlug();
+        }
+
+        $slug = $this->sanitizeBrainSlug($slug);
+        $isSystem = $slug === 'system';
+
+        $source = $isSystem ? $this->paths->systemBrain() : $this->paths->userBrain($slug);
+
+        if (!\is_file($source)) {
+            throw new StorageException(\sprintf('Brain "%s" does not exist.', $slug));
+        }
+
+        $labelPart = '';
+        if ($label !== null && $label !== '') {
+            $labelPart = '-' . $this->sanitizeBackupLabel($label);
+        }
+
+        $timestamp = (new DateTimeImmutable())->format('Ymd_His');
+        $destination = $this->paths->userBackups() . DIRECTORY_SEPARATOR . \sprintf('%s%s-%s.brain', $slug, $labelPart, $timestamp);
+
+        if (!@\copy($source, $destination)) {
+            throw new StorageException('Unable to create brain backup.');
+        }
+
+        $bytes = @\filesize($destination) ?: null;
+
+        $this->events->emit('brain.backup.created', [
+            'slug' => $slug,
+            'path' => $destination,
+            'bytes' => $bytes,
+            'is_system' => $isSystem,
+        ]);
+
+        return [
+            'slug' => $slug,
+            'path' => $destination,
+            'bytes' => $bytes,
+            'created_at' => (new DateTimeImmutable())->format(DATE_ATOM),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function brainReport(?string $slug = null): array
+    {
+        if ($slug === null || $slug === '') {
+            $slug = $this->activeBrain() ?? $this->determineActiveBrainSlug();
+        }
+
+        $slug = $this->sanitizeBrainSlug($slug);
+
+        if ($slug === 'system') {
+            return $this->describeBrainFile('system', $this->paths->systemBrain(), true, 'system');
+        }
+
+        $path = $this->paths->userBrain($slug);
+
+        return $this->describeBrainFile($slug, $path, $slug === ($this->activeBrain() ?? $this->determineActiveBrainSlug()), 'user');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function integrityReportFor(?string $slug = null): array
+    {
+        if ($slug === null || $slug === '') {
+            $slug = $this->activeBrain() ?? $this->determineActiveBrainSlug();
+        }
+
+        $slug = $this->sanitizeBrainSlug($slug);
+
+        if ($slug === 'system') {
+            return $this->integrityReport();
+        }
+
+        $path = $this->paths->userBrain($slug);
+        if (!\is_file($path)) {
+            throw new StorageException(\sprintf('Brain "%s" does not exist.', $slug));
+        }
+
+        return [
+            'brain' => $this->describeBrainFile(
+                $slug,
+                $path,
+                $slug === ($this->activeBrain() ?? $this->determineActiveBrainSlug()),
+                'user'
+            ),
+            'hash' => @hash_file('sha256', $path) ?: null,
+            'state' => [
+                'last_write' => $this->integrityState['last_write'] ?? null,
+                'last_failure' => $this->integrityState['last_failure'] ?? null,
+            ],
+        ];
     }
 
     /**
@@ -1399,7 +1859,50 @@ final class BrainRepository
             'title' => $slug,
             'created_at' => $timestamp,
             'updated_at' => $timestamp,
+            'status' => 'active',
+            'archived_at' => null,
             'entities' => [],
+        ];
+    }
+
+    private function summarizeProject(string $slug, array $project): array
+    {
+        $entities = isset($project['entities']) && \is_array($project['entities']) ? $project['entities'] : [];
+        $entityCount = \count($entities);
+        $versionCount = 0;
+
+        foreach ($entities as $entity) {
+            if (!\is_array($entity) || !isset($entity['versions']) || !\is_array($entity['versions'])) {
+                continue;
+            }
+
+            $versionCount += \count($entity['versions']);
+        }
+
+        return [
+            'slug' => $slug,
+            'title' => $project['title'] ?? null,
+            'status' => $project['status'] ?? 'active',
+            'created_at' => $project['created_at'] ?? null,
+            'updated_at' => $project['updated_at'] ?? null,
+            'archived_at' => $project['archived_at'] ?? null,
+            'entity_count' => $entityCount,
+            'version_count' => $versionCount,
+        ];
+    }
+
+    private function summarizeEntity(string $slug, array $entity): array
+    {
+        $versions = isset($entity['versions']) && \is_array($entity['versions']) ? $entity['versions'] : [];
+
+        return [
+            'slug' => $slug,
+            'status' => $entity['status'] ?? 'active',
+            'created_at' => $entity['created_at'] ?? null,
+            'updated_at' => $entity['updated_at'] ?? null,
+            'archived_at' => $entity['archived_at'] ?? null,
+            'active_version' => $entity['active_version'] ?? null,
+            'version_count' => \count($versions),
         ];
     }
 
@@ -1507,6 +2010,80 @@ final class BrainRepository
         return $count;
     }
 
+    private function describeBrainFile(string $slug, string $path, bool $active, string $type): array
+    {
+        $exists = is_file($path);
+        $size = $exists ? (@filesize($path) ?: null) : null;
+        $modified = $exists ? (@filemtime($path) ?: null) : null;
+        $modifiedAt = $modified ? date(DATE_ATOM, $modified) : null;
+        $entityVersions = $exists ? $this->countEntityVersionsInFile($path) : null;
+
+        return [
+            'slug' => $slug,
+            'type' => $type,
+            'path' => $path,
+            'exists' => $exists,
+            'active' => $active,
+            'size_bytes' => $size,
+            'modified_at' => $modifiedAt,
+            'entity_versions' => $entityVersions,
+        ];
+    }
+
+    private function sanitizeBrainSlug(string $slug): string
+    {
+        $slug = trim($slug);
+
+        if ($slug === '' || strtolower($slug) === 'system') {
+            return strtolower($slug) === 'system' ? 'system' : $this->determineActiveBrainSlug();
+        }
+
+        return $this->normalizeKey($slug);
+    }
+
+    private function sanitizeBackupLabel(string $label): string
+    {
+        $label = strtolower(trim($label));
+        $label = preg_replace('/[^a-z0-9\-_.]/', '-', $label) ?? $label;
+
+        return trim($label, '-_.');
+    }
+
+    private function countEntityVersionsInFile(string $path): ?int
+    {
+        try {
+            $raw = @file_get_contents($path);
+            if ($raw === false) {
+                return null;
+            }
+
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable $exception) {
+            return null;
+        }
+
+        if (!is_array($decoded) || !isset($decoded['projects']) || !is_array($decoded['projects'])) {
+            return null;
+        }
+
+        $count = 0;
+        foreach ($decoded['projects'] as $project) {
+            if (!is_array($project) || !isset($project['entities']) || !is_array($project['entities'])) {
+                continue;
+            }
+
+            foreach ($project['entities'] as $entity) {
+                if (!is_array($entity) || !isset($entity['versions']) || !is_array($entity['versions'])) {
+                    continue;
+                }
+
+                $count += count($entity['versions']);
+            }
+        }
+
+        return $count;
+    }
+
 
     private function describeFile(string $path): array
     {
@@ -1532,6 +2109,64 @@ final class BrainRepository
             'size' => $size,
             'modified_at' => $modifiedAt,
         ];
+    }
+
+    private function resolveEntityVersionKey(array $brain, string $project, string $entitySlug, array $entity, string $reference): ?string
+    {
+        $reference = trim($reference);
+
+        if ($reference === '') {
+            return $entity['active_version'] ?? null;
+        }
+
+        if (\str_starts_with($reference, '@')) {
+            $version = \ltrim(\substr($reference, 1));
+            if ($version !== '' && isset($entity['versions'][$version])) {
+                return $version;
+            }
+        } elseif (\str_starts_with($reference, '#')) {
+            $hash = \substr($reference, 1);
+            return $this->resolveCommitVersion($brain, $project, $entitySlug, $hash);
+        } else {
+            if (isset($entity['versions'][$reference])) {
+                return $reference;
+            }
+
+            $numeric = (string) (int) $reference;
+            if ($numeric !== '0' && isset($entity['versions'][$numeric])) {
+                return $numeric;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveCommitVersion(array $brain, string $project, string $entity, string $hash): ?string
+    {
+        $hash = strtolower(trim($hash));
+        if ($hash === '') {
+            return null;
+        }
+
+        $commits = isset($brain['commits']) && \is_array($brain['commits']) ? $brain['commits'] : [];
+
+        foreach ($commits as $commitHash => $commit) {
+            if (!\is_array($commit)) {
+                continue;
+            }
+
+            if (strtolower($commitHash) !== $hash) {
+                continue;
+            }
+
+            if (($commit['project'] ?? null) !== $project || ($commit['entity'] ?? null) !== $entity) {
+                continue;
+            }
+
+            return (string) ($commit['version'] ?? '');
+        }
+
+        return null;
     }
 
     private function timestamp(): string

@@ -3,6 +3,10 @@
 > **Status:** Draft  
 > **Last updated:** 0.1.0-dev
 
+## Admin Secret
+- Configured via `config.php` (`admin_secret`). Must start with `_` and be at least 8 characters. Empty string disables it.  
+- Grants full access regardless of API state or existing tokens; bypass intended for setup/recovery. Usage should be logged and key stored securely.
+
 ## Bootstrap Key
 - Static key `admin` is seeded on first boot and remains valid until a user-supplied token is created.  
 - CLI/PHP entry points may use the bootstrap key implicitly, but REST access is always blocked while it is the only active key.
@@ -21,11 +25,11 @@
 - Revoking the last user token automatically disables the API and reactivates the bootstrap key for recovery.
 - Clients must supply `Authorization: Bearer <token>`; fallbacks (`X-API-Key`, `token`/`api_key` query/body parameters) exist for tooling convenience.
 
-## Planned Lifecycle Commands
-- `auth grant` will mint a new token (32+ chars), persist its hash, and return handling guidance.  
+## Lifecycle Commands
+- `auth grant` (planned implementation) will mint a new token (default 16 chars; configurable via `api_key_length`), persist its hash, and return handling guidance.  
 - `auth list` will expose masked tokens, status flags, and audit timestamps.  
 - `auth revoke {key}` will deactivate a token; if no active keys remain, `api.enabled` is forced off and `bootstrap_active` resets.  
-- `auth reset` (planned) resets all tokens, disables REST, and re-enables the bootstrap key for recovery.
+- `auth reset` will reset all tokens, disable REST, and re-enable the bootstrap key for recovery.
 
 ## Logging & Recovery
 - Auth events will be forwarded to the upcoming logging module (view/rotate/cleanup commands).  

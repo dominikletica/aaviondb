@@ -59,3 +59,4 @@ $RECYCLE.BIN/
 # Secrets and environment variables
 .env
 .secrets
+config.php

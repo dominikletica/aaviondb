@@ -1,0 +1,15 @@
+{
+    "name": "Project Agent",
+    "slug": "project",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage projects inside the active brain (list/create/archive/delete/info).",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use"
+    ]
+}

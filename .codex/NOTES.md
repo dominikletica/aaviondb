@@ -63,15 +63,18 @@
 - [ ] Implement `status`, `diagnose`, `help`; provide command metadata for auto-help listings.
 
 **BrainAgent (`brain`)**
-- [ ] Commands: `brains`, `brain init`, `brain switch`, `brain backup`; surface integrity report.
-- [ ] Add maintenance subcommands for validation/compaction/repair (see Roadmap “Brain Integrity Utilities”).
+- [x] Commands: `brains`, `brain init`, `brain switch`, `brain backup`, `brain info`, `brain validate` implemented.
+- [ ] Add further maintenance subcommands for compaction/repair (see Roadmap “Brain Integrity Utilities”).
+- [ ] Planned cleanup command to purge inactive versions per brain/project on explicit request.
 
 **ProjectAgent (`project`)**
-- [ ] Commands: `project list/create/remove/info`; coordinate cascade effects with EntityAgent.
+- [x] Commands: `project list/create/remove/delete/info` implemented.
+- [ ] Coordinate cascade effects with EntityAgent for future automation.
 
 **EntityAgent (`entity`)**
-- [ ] Commands: `entity list/show/save/delete/restore`; enforce hashing + version semantics.
-- [ ] Adopt `@version` selectors from the start (documentation + parser support).
+- [x] Commands: `entity list/show/save/delete/restore`; enforce hashing + version semantics.
+- [x] Adopt `@version` / `#commit` selectors.
+- [ ] Coordinate cascade behaviour with ProjectAgent.
 
 **ExportAgent (`export`)**
 - [ ] Parser for `export {project} [entity[,entity]]` + optional `@version`/`#hash` selectors.
@@ -106,3 +109,12 @@
 - [ ] Provide CLI commands (`scheduler list`, `scheduler run`, `scheduler enable/disable`) for cron/automation integration.
 
 > Next up after the break: begin with **CoreAgent** to establish baseline command conventions; other modules will follow in the listed order unless priorities shift.
+
+## 2025-10-18 – Evening Session
+
+- Session kickoff: focus on CoreAgent implementation (status/diagnostics/help) using the updated module plan.
+- Implemented CoreAgent module (`system/modules/core`): registers `status`, `diagnose`, and `help` commands with module-aware metadata, brain footprint metrics, and status snapshot.
+- Updated docs to reflect AavionStudio integration (external UI) and unified `@version` selector semantics.
+- Added BrainAgent module (`system/modules/brain`): brains/list/init/switch/backup/info/validate with BrainRepository extensions (listBrains, createBrain, etc.).
+- Added ProjectAgent module (`system/modules/project`): project lifecycle (list/create/remove/delete/info) using repository helpers + soft/hard delete semantics.
+- Introduced `config.php` (based on `config.example.php`) for admin secret, default brain, storage paths, export behaviour, and API key length. Config is loaded at bootstrap and shared via container.

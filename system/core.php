@@ -28,6 +28,11 @@ final class AavionDB
     private static array $bootstrapOptions = [];
 
     /**
+     * @var array<string, mixed>
+     */
+    private static array $config = [];
+
+    /**
      * Bootstraps the framework. May only be invoked once per request lifecycle.
      *
      * @param array<string, mixed> $options
@@ -38,10 +43,11 @@ final class AavionDB
             return;
         }
 
-        self::$bootstrapOptions = $options;
+        $config = self::configuration($options);
+        self::$bootstrapOptions = $config;
 
-        $bootstrap = new Bootstrap(\dirname(__DIR__));
-        self::$state = $bootstrap->boot($options);
+        $bootstrap = new Bootstrap(\dirname(__DIR__), $config);
+        self::$state = $bootstrap->boot($config);
     }
 
     /**
@@ -149,6 +155,16 @@ final class AavionDB
     }
 
     /**
+     * Returns the loaded configuration.
+     *
+     * @return array<string, mixed>
+     */
+    public static function config(): array
+    {
+        return self::$config;
+    }
+
+    /**
      * Returns the shared event bus instance.
      */
     public static function events(): EventBus
@@ -241,6 +257,45 @@ final class AavionDB
     {
         self::$state = null;
         self::$bootstrapOptions = [];
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private static function configuration(array $overrides = []): array
+    {
+        if (self::$config === []) {
+            $root = \dirname(__DIR__);
+
+            $defaults = [
+                'admin_secret' => '',
+                'default_brain' => 'default',
+                'backups_path' => 'user/backups',
+                'exports_path' => 'user/exports',
+                'log_path' => 'system/storage/logs',
+                'response_exports' => true,
+                'save_exports' => true,
+                'api_key_length' => 16,
+            ];
+
+            $config = [];
+            $file = $root . DIRECTORY_SEPARATOR . 'config.php';
+
+            if (\is_file($file)) {
+                $loaded = require $file;
+                if (\is_array($loaded)) {
+                    $config = $loaded;
+                }
+            }
+
+            self::$config = \array_merge($defaults, $config);
+        }
+
+        self::$config = \array_merge(self::$config, $overrides);
+
+        return self::$config;
     }
 
     private static function assertBooted(): void

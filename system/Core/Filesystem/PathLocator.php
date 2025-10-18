@@ -13,9 +13,15 @@ final class PathLocator
 {
     private string $rootPath;
 
-    public function __construct(string $rootPath)
+    /**
+     * @var array<string, mixed>
+     */
+    private array $config;
+
+    public function __construct(string $rootPath, array $config = [])
     {
         $this->rootPath = \rtrim($rootPath, DIRECTORY_SEPARATOR);
+        $this->config = $config;
     }
 
     public function root(): string
@@ -40,7 +46,9 @@ final class PathLocator
 
     public function systemLogs(): string
     {
-        return $this->systemStorage() . DIRECTORY_SEPARATOR . 'logs';
+        $path = $this->config['log_path'] ?? 'system/storage/logs';
+
+        return $this->resolvePath($path);
     }
 
     public function userStorage(): string
@@ -56,6 +64,20 @@ final class PathLocator
     public function userModules(): string
     {
         return $this->user() . DIRECTORY_SEPARATOR . 'modules';
+    }
+
+    public function userBackups(): string
+    {
+        $path = $this->config['backups_path'] ?? 'user/backups';
+
+        return $this->resolvePath($path);
+    }
+
+    public function userExports(): string
+    {
+        $path = $this->config['exports_path'] ?? 'user/exports';
+
+        return $this->resolvePath($path);
     }
 
     public function systemBrain(): string
@@ -82,8 +104,9 @@ final class PathLocator
             $this->user(),
             $this->userStorage(),
             $this->userModules(),
-            $this->user() . DIRECTORY_SEPARATOR . 'exports',
+            $this->userExports(),
             $this->user() . DIRECTORY_SEPARATOR . 'cache',
+            $this->userBackups(),
         ];
 
         foreach ($directories as $directory) {
@@ -112,5 +135,33 @@ final class PathLocator
         $slug = \trim($slug, '-_.');
 
         return $slug === '' ? 'default' : $slug;
+    }
+
+    private function resolvePath(string $path): string
+    {
+        $path = \str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+
+        if ($path === '') {
+            return $this->rootPath;
+        }
+
+        if ($this->isAbsolutePath($path)) {
+            return $path;
+        }
+
+        return $this->rootPath . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        if ($path[0] === DIRECTORY_SEPARATOR) {
+            return true;
+        }
+
+        return (bool) \preg_match('/^[A-Za-z]:\\\\/', $path);
     }
 }

@@ -133,12 +133,12 @@ return [
   - Expose brain config helpers and maintenance tooling (validation/repair)
 - **`ProjectAgent` (`project`)** – Project indexing and metadata
   - Create/list/remove projects
-  - Manage project-level metadata
-  - Coordinate with entity agent
+  - Manage project-level metadata and stats
+  - Coordinate with entity agent/cascade logic
 - **`EntityAgent` (`entity`)** – Entity versioning workflow
   - CRUD for entities and versions
-  - Handle canonical hashing
-  - Restore/delete operations and syntax migration support (`@version`)
+  - Handle canonical hashing and version history
+  - Restore/delete operations using `@version` / `#commit` selectors
 - **`ExportAgent` (`export`)** – Data exports and snapshots
   - Command syntax (per README): `export {project} [entity[,entity]]` with optional `@version` / `#hash` selectors
   - Generate JSON slices for whole brains, projects, or entity subsets

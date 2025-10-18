@@ -1,0 +1,17 @@
+{
+    "name": "Brain Agent",
+    "slug": "brain",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Brain lifecycle management (list, init, switch, backup, diagnostics).",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "events.dispatch",
+        "paths.read",
+        "storage.read",
+        "storage.write",
+        "logger.use"
+    ]
+}

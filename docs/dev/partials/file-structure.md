@@ -21,6 +21,7 @@ aavionDB/
 │   ├── exports/                 # Generated exports for LLMs
 │   └── cache/                   # Temporary runtime/cache data
 ├── docs/                        # Documentation (`README.md`, manual, specs)
+├── config.example.php           # Configuration template (copy to config.php)
 ├── api.php                      # REST/PHP entry point
 ├── cli.php                      # CLI entry point
 └── README.md                    # Project overview

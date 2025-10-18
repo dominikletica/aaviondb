@@ -28,9 +28,15 @@ final class Bootstrap
      */
     private $rootPath;
 
-    public function __construct(string $rootPath)
+    /**
+     * @var array<string, mixed>
+     */
+    private array $config;
+
+    public function __construct(string $rootPath, array $config = [])
     {
         $this->rootPath = \rtrim($rootPath, DIRECTORY_SEPARATOR);
+        $this->config = $config;
     }
 
     /**
@@ -71,7 +77,7 @@ final class Bootstrap
     private function registerBaseServices(Container $container, array $options): void
     {
         $container->set(PathLocator::class, function () use ($options): PathLocator {
-            $locator = new PathLocator($this->rootPath);
+            $locator = new PathLocator($this->rootPath, $this->config);
             $locator->ensureDefaultDirectories();
 
             return $locator;
@@ -129,7 +135,7 @@ final class Bootstrap
             $events = $container->get(EventBus::class);
             
             $defaults = [
-                'active_brain' => $options['active_brain'] ?? 'default',
+                'active_brain' => $options['default_brain'] ?? ($options['active_brain'] ?? 'default'),
             ];
 
             return new BrainRepository($paths, $events, $defaults);
@@ -151,13 +157,17 @@ final class Bootstrap
             return $loader;
         });
 
-        $container->set(AuthManager::class, function (Container $container): AuthManager {
+        $container->set(AuthManager::class, function (Container $container) use ($options): AuthManager {
             /** @var BrainRepository $brains */
             $brains = $container->get(BrainRepository::class);
             /** @var LoggerInterface $logger */
             $logger = $container->get(LoggerInterface::class);
 
-            return new AuthManager($brains, $logger);
+            return new AuthManager($brains, $logger, $this->config);
+        });
+
+        $container->set('config', function (): array {
+            return $this->config;
         });
     }
 

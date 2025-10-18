@@ -16,10 +16,19 @@ final class AuthManager
 
     private LoggerInterface $logger;
 
-    public function __construct(BrainRepository $brains, LoggerInterface $logger)
+    /**
+     * @var array<string, mixed>
+     */
+    private array $config;
+
+    private string $adminSecret;
+
+    public function __construct(BrainRepository $brains, LoggerInterface $logger, array $config = [])
     {
         $this->brains = $brains;
         $this->logger = $logger;
+        $this->config = $config;
+        $this->adminSecret = $this->normaliseAdminSecret($config['admin_secret'] ?? '');
     }
 
     /**
@@ -29,6 +38,26 @@ final class AuthManager
      */
     public function guardRestAccess(?string $token, string $action): array
     {
+        $token = $token !== null ? \trim($token) : '';
+
+        if ($this->allowsAdminSecret($token)) {
+            $this->logger->notice('REST access granted via admin secret.', ['action' => $action]);
+
+            return [
+                'allowed' => true,
+                'status_code' => 200,
+                'payload' => [
+                    'status' => 'ok',
+                    'action' => $action,
+                    'message' => 'Access granted (admin secret).',
+                    'data' => null,
+                    'meta' => [
+                        'mode' => 'admin_secret',
+                    ],
+                ],
+            ];
+        }
+
         try {
             $state = $this->brains->systemAuthState();
         } catch (\Throwable $exception) {
@@ -63,7 +92,6 @@ final class AuthManager
             ];
         }
 
-        $token = $token !== null ? \trim($token) : '';
         if ($token === '') {
             return [
                 'allowed' => false,
@@ -211,5 +239,27 @@ final class AuthManager
             'data' => null,
             'meta' => $meta,
         ];
+    }
+
+    private function normaliseAdminSecret(string $secret): string
+    {
+        $secret = \trim($secret);
+
+        if ($secret === '') {
+            return '';
+        }
+
+        if (!\str_starts_with($secret, '_') || \strlen($secret) < 8) {
+            $this->logger->warning('Configured admin secret is invalid (must start with "_" and be at least 8 characters).');
+
+            return '';
+        }
+
+        return $secret;
+    }
+
+    private function allowsAdminSecret(string $token): bool
+    {
+        return $this->adminSecret !== '' && $token !== '' && \hash_equals($this->adminSecret, $token);
     }
 }

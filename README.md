@@ -123,6 +123,16 @@ AavionDB::setup(); //lazily bootstraps; repeated calls are ignored within the sa
 
 More commands will be documented as development progresses.
 
+### Configuration
+
+- Copy `config.example.php` to `config.php` and adjust the values before exposing AavionDB publicly.
+  - `admin_secret` — Master secret (must start with `_` and be ≥ 8 characters). When set, it bypasses API keys and `api serve`; keep it safe.
+  - `default_brain` — Slug of the initial user brain (defaults to `default`).
+  - `backups_path`, `exports_path`, `log_path` — Override storage locations (relative paths resolve from the repo root).
+  - `response_exports` / `save_exports` — Control whether export commands return JSON in the response and/or persist files to disk.
+  - `api_key_length` — Length of generated API keys (default 16).
+- If `config.php` is missing, the built-in defaults are used and the admin secret remains disabled (empty string).
+
 ### REST API
 
 - Endpoint: `api.php?action=<command>` (e.g. `api.php?action=list&scope=projects`).
