@@ -158,107 +158,91 @@ Each Agent uses the same Command Registry, ensuring consistent behavior across i
 
 ---
 
-## 🧩 UI Agent
+## 🧩 Command Dispatch Layer
 
-The **UI Agent** offers a web-based console and graphical interface:  
-- Interactive shell (simulates CLI, powered by **xterm.js** or a similar lightweight terminal emulator)  
-- A read-only tree-view for navigating projects, entities, and versions (via **jsTree** or **VanillaTree**)  
-- Visual feedback for `save`, `export`, `restore`, etc.  
-- API key authentication  
-- Optional live preview for JSON entities
-- Optional buttons for invoking framework commands that mirror CLI output inside the shell  
-- An integrated JSON editor for constructing API or CLI payloads -> use **CodeMirror 6**.  
-  It provides syntax highlighting, linting, and real-time validation for JSON input.  
-  The editor must support dark and light modes and follow the framework’s preferred toolchain:
-  **Vite + TailwindCSS + PostCSS + Alpine.js + Prism.js**, with **Tabler Icons**.
+> **Design Goal:**  
+> Every interface — whether REST, CLI, or PHP — must interpret and execute commands using the same unified syntax and parsing logic.
 
-UI assets live in:
+The command layer defines a single, human-readable syntax that is valid across **all runtime contexts**.  
+Each command can be expressed as a simple, space-delimited instruction, optionally followed by structured JSON data.
 
+### 🧭 Universal Command Format
+
+**Syntax:**
 ```
-system/assets/
-system/templates/
+[action] [project] [entity] {optional JSON payload}
 ```
 
-User-defined UI modules can extend this interface with sub-pages.
+**Examples:**
+```
+save demo article { "title": "Hello", "content": "World" }
+show demo article
+remove demo article
+export demo article:102
+```
 
----
+### 💡 Interface Equivalence
 
-## 🔐 Authentication Agent
+All supported interfaces must accept the same structure:
 
-Manages API key generation, validation, and revocation.
+| Context | Example | Notes |
+|----------|----------|-------|
+| **CLI** | `php cli.php "save demo test {"title":"My Entry"}"` | Direct console command |
+| **PHP** | `AavionDB::command('save demo test {"title":"My Entry"}');` | Internal execution |
+| **REST (preferred)** | `POST /api.php?action=save&project=demo&entity=test` | Structured parameter version |
+| **REST (unified syntax)** | `POST /api.php?command` with body: `{ "save demo test": { "title": "My Entry" } }` | Optional unified syntax mode |
 
-| Command | Description |
-|----------|-------------|
-| `auth grant` | Generates a new API key (16 chars, alphanumeric). |
-| `auth revoke {key}` | Invalidates an existing key. |
-| `auth list` | (Planned) Lists all valid keys and their scopes. |
+### ⚙️ Parsing Rules
 
----
+- Commands are case-insensitive.  
+- JSON payloads must be enclosed in `{}` braces.  
+- CLI and REST commands share identical dispatch logic internally (`CommandParser::parse()`).  
+- The parser automatically extracts:
+  - `action` → verb (e.g. save, show, list, remove)
+  - `project` → target project slug
+  - `entity` → entity identifier
+  - `payload` → JSON object (optional)
+- Invalid or malformed JSON payloads must trigger a standardized error response.
 
-## 🧠 Brains Agent
+### 🧩 Dispatch Flow
 
-Manages all logical user-level databases (Brains).
+1. The raw command string is parsed by `CommandParser::parse()`.
+2. Parsed parameters are normalized into a structured array:
+   ```php
+   [
+     'action'  => 'save',
+     'project' => 'demo',
+     'entity'  => 'test',
+     'payload' => [ 'title' => 'Hello', 'content' => 'World' ]
+   ]
+   ```
+3. The dispatcher (`CommandDispatcher`) routes the command to the responsible **Agent**.
+4. The result is returned as a unified response object.
 
-> ⚠️ **Note:** The `system.brain` is always active and cannot be deactivated or deleted.  
-> It stores framework internals such as API keys, access control, and system settings.
+### 🧬 Internal API
 
-| Command | Description |
-|----------|-------------|
-| `brains` | Lists all available Brains. |
-| `init {brain}` | Activates or creates a new user-level Brain. |
-| `backup {brain}` | Duplicates current Brain with a timestamp. |
-| `delete {brain}` | Removes the specified Brain (with confirmation). |
+The framework provides two main entry points for internal execution:
 
-User Brains can be swapped at runtime, while `system.brain` remains mounted as a persistent, immutable system layer.
+```php
+AavionDB::run('save', [
+    'project' => 'demo',
+    'entity'  => 'test',
+    'payload' => ['title' => 'Hello']
+]);
 
----
+// OR, for unified syntax compatibility
+AavionDB::command('save demo test {"title":"Hello"}');
+```
 
-## 🧰 Export Agent
+Both calls must produce identical results and response objects.
 
-Exports entities or projects into **LLM-friendly JSON slices**.  
-Includes metadata headers and field normalization for improved parsing.
+### 🔁 Design Rationale
 
-| Command | Description |
-|----------|-------------|
-| `export {project}` | Exports entire project to JSON. |
-| `export {project} {entity[:version]}` | Exports single entity or version. |
-| `export {project} [list]` | Exports multiple entities as array bundle. |
-
----
-
-## 🧩 Simple Storage Agent
-
-A lightweight key-value store for quick access to unversioned data,  
-ideal for configuration parameters and runtime flags.
-
-| Command | Description |
-|----------|-------------|
-| `set {key} {value}` | Sets a key-value pair. |
-| `get {key}` | Retrieves a value. |
-| `get` | Lists all stored keys. |
-
----
-
-## 📡 API Agent
-
-Responsible for REST handling and lifecycle management.
-
-| Command | Description |
-|----------|-------------|
-| `api serve` | Launches API endpoint handler (`api.php`). |
-| `api stop` | Stops API service. |
-| `api reset` | Generates a new API key. |
-
----
-
-## 🧩 Planned Integrations
-
-| Type | Description |
-|------|--------------|
-| **SQLite Driver** | Optional backend for relational data. |
-| **Git Adapter** | Version bridging to native Git commits. |
-| **LLM Exporter (v2)** | Extended metadata and embedding support. |
-| **WebSocket Bridge** | Real-time data synchronization for the UI. |
+- **Full parity** between REST, CLI, and PHP.  
+- **Simplified testing** — same commands usable in all contexts.  
+- **Future integrations** (e.g., WebSocket or REPL interfaces) easily supported.  
+- **Reduced API surface area** — one parser, one dispatcher.  
+- **Predictable, language-agnostic behavior** ideal for LLM agents.
 
 ---
 
