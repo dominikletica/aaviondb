@@ -1,0 +1,238 @@
+# AavionDB Core Architecture (Draft 1)
+
+> Status: In active development  
+> Maintainer: Codex (GPT-5)  
+> Scope: Defines the baseline runtime architecture required before system modules, UI, and test suites are implemented.
+
+This document captures the concrete implementation blueprint for the initial **Core** of AavionDB.  
+It refines and extends the high-level goals from `docs/dev/MANUAL.md` and `.codex/AGENTS.md`.
+
+---
+
+## 1. Runtime Boot Sequence
+
+The canonical entry point remains `AavionDB::setup()`. The boot process is executed exactly once per request and resolves the following phases:
+
+1. **Environment bootstrap** – load configuration, establish paths, wire service container.
+2. **System brain mount** – open `system/storage/system.brain`; create with default structure when absent.
+3. **User brain resolution** – determine active user brain from system brain metadata; lazily create if referenced but missing.
+4. **Service registration** – register the Command Registry, Event Bus, Storage Engines, Logger.
+5. **Module discovery** – scan `/system/modules` (required) and `/user/modules` (optional); validate manifests; preload metadata.
+6. **Command binding** – allow modules to register commands; populate shared registry.
+7. **Context finalisation** – expose dispatcher methods (`run`, `command`) and mark the runtime as ready for CLI/REST/UI use.
+
+When bootstrapping fails, the setup method throws typed exceptions. No partial state must be written.
+
+---
+
+## 2. Core Namespace Layout
+
+Autoload mapping (`composer.json`) already binds `AavionDB\` to `system/`. The core will be structured as follows:
+
+```
+system/
+├── core.php                # Exposes façade class AavionDB
+├── Core/
+│   ├── Bootstrap.php       # Handles setup pipeline
+│   ├── Container.php       # Lightweight service locator (lazy factories only)
+│   ├── CommandRegistry.php # Stores callable command handlers and metadata
+│   ├── EventBus.php        # Publish/subscribe for internal events
+│   ├── Exceptions/         # Framework-specific exception hierarchy
+│   │   ├── AavionException.php
+│   │   ├── BootstrapException.php
+│   │   ├── StorageException.php
+│   │   └── CommandException.php
+│   ├── Filesystem/
+│   │   ├── BrainFilesystem.php   # Encapsulates access to .brain files
+│   │   └── PathLocator.php       # Resolves canonical paths for system/user assets
+│   ├── Hashing/CanonicalJson.php # Canonical encoder + hashing utilities
+│   ├── RuntimeState.php          # Immutable snapshot of boot outcome
+│   └── Support/                  # Shared helpers (e.g. Arr::ksortRecursive)
+└── Storage/
+    ├── BrainStore.php            # In-memory representation of a mounted brain
+    ├── BrainRecord.php           # Value object for a stored version
+    └── BrainRepository.php       # High-level CRUD operations on brains
+```
+
+All classes will follow PSR-12 and ship with PHPDoc on public APIs.
+
+---
+
+## 3. Facade (`system/core.php`)
+
+The façade exposes the runtime to consumers:
+
+```php
+namespace AavionDB;
+
+final class AavionDB
+{
+    public static function setup(array $options = []): void;
+    public static function run(string $action, array $parameters = []): array;
+    public static function command(string $statement): array;
+    public static function diagnose(): array;
+    public static function events(): Core\EventBus;
+    public static function commands(): Core\CommandRegistry;
+    public static function isBooted(): bool;
+}
+```
+
+- `setup()` delegates to `Core\Bootstrap`.
+- `run()` executes a command by name, guaranteeing unified response structure.
+- `command()` parses human-readable CLI statements into `run()`.
+- `diagnose()` gathers diagnostics (loaded modules, brain state, config).
+- The façade tracks boot state via a `Core\RuntimeState` singleton.
+
+No global variables will be used; state lives inside the container and injected services.
+
+---
+
+## 4. Canonical JSON & Hashing
+
+Deterministic hashing is required for version control.  
+Implementation outline (`Core\Hashing\CanonicalJson`):
+
+1. Accept native PHP values (arrays / scalars).
+2. Recursively sort **associative** keys lexicographically.
+3. Preserve order of **indexed** arrays.
+4. Encode via `json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)`.
+5. Return both the canonical JSON string and SHA-256 hash (lowercase hex).
+
+This process is O(n log n) due to sorting; caching is planned but not part of the initial prototype.
+
+---
+
+## 5. Brain Storage Model
+
+`.brain` files reside under:
+
+- `system/storage/system.brain` (framework metadata, auth keys, active brain pointer).
+- `user/storage/<slug>.brain` (user data).
+
+### 5.1 File Schema (JSON Object)
+
+Top-level keys:
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `meta` | object | Brain metadata (slug, UUIDv4, timestamps, schema version). |
+| `projects` | object | Map of projects keyed by slug. |
+| `commits` | object | Global lookup by commit hash (optional optimisation). |
+
+Project object:
+
+```json
+{
+  "slug": "demo",
+  "title": "Demo Project",
+  "created_at": "2025-01-01T12:00:00Z",
+  "updated_at": "2025-01-01T12:00:00Z",
+  "entities": {
+    "article": {
+      "active_version": "3",
+      "versions": {
+        "1": {
+          "version": 1,
+          "hash": "abc...",
+          "commit": "abc...",
+          "committed_at": "2025-01-01T11:00:00Z",
+          "status": "inactive",
+          "payload": { "...": "..." }
+        },
+        "3": {
+          "version": 3,
+          "hash": "def...",
+          "commit": "def...",
+          "committed_at": "2025-01-01T12:00:00Z",
+          "status": "active",
+          "payload": {}
+        }
+      }
+    }
+  }
+}
+```
+
+Commits object (optional but enables quick lookup):
+
+```json
+"commits": {
+  "def...": {
+    "project": "demo",
+    "entity": "article",
+    "version": "3"
+  }
+}
+```
+
+The structure intentionally keeps associative maps at every layer to retain deterministic ordering during canonical encoding.
+
+### 5.2 Brain Repository Responsibilities
+
+- Load `.brain` JSON into PHP arrays.
+- Validate required keys; supply defaults on new files.
+- Provide CRUD helpers: `listProjects()`, `saveEntity()`, `listVersions()`, etc.
+- Persist changes via canonical encoding to ensure deterministic bytes & hashes.
+
+Any write must be atomic (write to temp file, `rename()`).
+
+---
+
+## 6. Command Registry
+
+`Core\CommandRegistry` manages all callable commands:
+
+- `register(string $name, callable $handler, array $metadata = []): void`
+- `dispatch(string $name, array $params = []): CommandResponse`
+- Names are stored in lowercase; aliases permitted via metadata.
+- `CommandResponse` is a value object (status, message, payload, meta).
+
+Initial built-in commands (to be supplied by system modules later) will follow the same interface.
+
+---
+
+## 7. Event Bus
+
+`Core\EventBus` offers a minimal publish/subscribe mechanism:
+
+- `on(string $event, callable $listener): void`
+- `emit(string $event, array $payload = []): void`
+- Supports wildcard listeners (`system.*`).
+- Listeners execute synchronously for now.
+
+Events will be namespaced (`brain.loaded`, `command.executed`, `storage.commit.created`).
+
+---
+
+## 8. Diagnostic Data
+
+`AavionDB::diagnose()` returns:
+
+- Framework version & git hash (`RuntimeState`).
+- Loaded modules (names, versions, autoload flags).
+- Active brains (system + user).
+- Command registry statistics (#commands, duplicates, aliases).
+- Storage integrity summary (hash verification, file timestamps).
+
+Diagnostics pull data exclusively from public service APIs to mirror the unified response model.
+
+---
+
+## 9. Documentation & Changelog
+
+- This file remains the authoritative core spec.
+- `docs/dev/MANUAL.md` will link here and focus on conceptual overview.
+- Internal decisions, migration notes, and implementation breadcrumbs will be tracked in `.codex/NOTES.md`.
+- All functional changes must update `/CHANGELOG.md` (to be created when runtime components land).
+
+---
+
+## 10. Next Steps
+
+1. Update `docs/dev/MANUAL.md` to reference this blueprint.
+2. Scaffold filesystem layout (`system/Core/...`, `system/Storage/...`).
+3. Implement façade (`system/core.php`) with bootstrap stub.
+4. Provide initial tests & fixtures once modules and commands are in place.
+
+---
+

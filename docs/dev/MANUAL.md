@@ -32,6 +32,8 @@
 
 ## 🧠 Core Architecture
 
+> Detailed implementation blueprint: [`docs/dev/core-architecture.md`](./core-architecture.md)
+
 The **Aavion Core** (`AavionDB`) orchestrates all framework components.  
 It handles initialization, routing, storage, and API dispatch.
 
