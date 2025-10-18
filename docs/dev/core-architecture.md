@@ -204,7 +204,42 @@ Events will be namespaced (`brain.loaded`, `command.executed`, `storage.commit.c
 
 ---
 
-## 8. Diagnostic Data
+## 8. Command Parsing Layer
+
+The parser converts human-readable statements (`"save demo article {...}"`) into structured parameters for the dispatcher.  
+Implementation class: `Core\CommandParser`.
+
+### 8.1 Baseline Behaviour
+
+1. Normalize the statement (`trim`, collapse whitespace).
+2. Extract first token as the command action (e.g. `save`, `list`).
+3. Split the remaining segment into argument tokens respecting quoted strings.
+4. Detect trailing JSON blocks (payload) and decode them deterministically.
+5. Produce a `ParsedCommand` value object containing:
+   - `action` – normalized command name
+   - `tokens` – ordered list of argument tokens
+   - `payload` – decoded JSON payload or `null`
+   - `parameters` – default parameter bag (`tokens`, `payload`, `raw`)
+   - `raw` metadata (original statement, argument substring, JSON substring)
+
+### 8.2 Extensibility
+
+- `CommandParser::registerHandler(?string $action, callable $handler, int $priority = 0)` allows modules to customise parsing.
+- Handlers receive a mutable `ParserContext` and may:
+  - transform or replace tokens/payload/parameters,
+  - override the resolved action (`setAction()`),
+  - stop further handler processing (`stopPropagation()`).
+- Global handlers register with `null` action and run for every statement prior to command-specific handlers.
+
+### 8.3 Integration Points
+
+- Modules register handlers during their initialisation (e.g. to interpret `entity:version` syntax).
+- The facade `AavionDB::command()` uses the parser and forwards structured parameters to `run()`.
+- Parser diagnostics expose registered handler counts to aid debugging.
+
+---
+
+## 9. Diagnostic Data
 
 `AavionDB::diagnose()` returns:
 
@@ -218,7 +253,7 @@ Diagnostics pull data exclusively from public service APIs to mirror the unified
 
 ---
 
-## 9. Documentation & Changelog
+## 10. Documentation & Changelog
 
 - This file remains the authoritative core spec.
 - `docs/dev/MANUAL.md` will link here and focus on conceptual overview.
@@ -227,7 +262,7 @@ Diagnostics pull data exclusively from public service APIs to mirror the unified
 
 ---
 
-## 10. Next Steps
+## 11. Next Steps
 
 1. Update `docs/dev/MANUAL.md` to reference this blueprint.
 2. Scaffold filesystem layout (`system/Core/...`, `system/Storage/...`).
@@ -235,4 +270,3 @@ Diagnostics pull data exclusively from public service APIs to mirror the unified
 4. Provide initial tests & fixtures once modules and commands are in place.
 
 ---
-

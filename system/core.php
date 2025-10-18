@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AavionDB;
 
 use AavionDB\Core\Bootstrap;
+use AavionDB\Core\CommandParser;
 use AavionDB\Core\CommandRegistry;
 use AavionDB\Core\CommandResponse;
 use AavionDB\Core\EventBus;
@@ -67,21 +68,11 @@ final class AavionDB
     {
         self::assertBooted();
 
-        $statement = \trim($statement);
-        if ($statement === '') {
-            throw new CommandException('Command statement must not be empty.');
-        }
+        /** @var CommandParser $parser */
+        $parser = self::$state->container()->get(CommandParser::class);
+        $parsed = $parser->parse($statement);
 
-        $parts = \preg_split('/\s+/', $statement, 2);
-        $action = $parts[0] ?? '';
-        $arguments = $parts[1] ?? '';
-
-        $payload = [];
-        if ($arguments !== '') {
-            $payload['arguments'] = $arguments;
-        }
-
-        return self::run($action, $payload);
+        return self::run($parsed->action(), $parsed->parameters());
     }
 
     /**
@@ -149,4 +140,3 @@ final class AavionDB
         }
     }
 }
-

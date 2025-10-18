@@ -83,6 +83,12 @@ final class RuntimeState
             ];
         }
 
+        if ($this->container->has(CommandParser::class)) {
+            /** @var CommandParser $parser */
+            $parser = $this->container->get(CommandParser::class);
+            $diagnostics['parser'] = $parser->diagnostics();
+        }
+
         if ($this->container->has(EventBus::class)) {
             /** @var EventBus $bus */
             $bus = $this->container->get(EventBus::class);
@@ -94,4 +100,3 @@ final class RuntimeState
         return $diagnostics;
     }
 }
-

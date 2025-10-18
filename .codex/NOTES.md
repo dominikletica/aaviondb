@@ -17,8 +17,8 @@
 
 - **Pending**  
   1. Flesh out `BrainRepository` with entity/project CRUD and hash handling.  
-  2. Implement command parsing utility for `AavionDB::command()`.  
-  3. Add diagnostics coverage for brain integrity checks.
+  2. Add diagnostics coverage for brain integrity checks.  
+  3. Define module registration workflow for parser handlers.
 
 ## 2025-02-14 – Evening Session
 
@@ -26,3 +26,4 @@
 - Added core services: `Container`, `CommandRegistry`, `CommandResponse`, `EventBus`, `RuntimeState`, and helper utilities.
 - Created filesystem scaffolding (`PathLocator`) and initial storage layer (`BrainRepository`) including automatic system/user brain creation with canonical JSON persistence.
 - Updated developer manual to link to the new core architecture blueprint.
+- Added extensible command parsing pipeline (CommandParser + ParserContext), routed facade command execution through structured parsing, and exposed parser diagnostics.

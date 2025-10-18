@@ -74,6 +74,13 @@ final class Bootstrap
 
         $container->set(EventBus::class, static fn (): EventBus => new EventBus());
 
+        $container->set(CommandParser::class, static function (Container $container): CommandParser {
+            /** @var EventBus $events */
+            $events = $container->get(EventBus::class);
+
+            return new CommandParser($events);
+        });
+
         $container->set(CommandRegistry::class, static fn (): CommandRegistry => new CommandRegistry());
 
         $container->set(BrainRepository::class, function (Container $container) use ($options): BrainRepository {
@@ -107,4 +114,3 @@ final class Bootstrap
         $brains->ensureActiveBrain();
     }
 }
-
