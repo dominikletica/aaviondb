@@ -3,6 +3,7 @@
 /dist/
 /vendor/
 /logs/
+/tests/coverage/
 
 # OS artifacts
 .DS_Store
