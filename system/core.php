@@ -12,6 +12,7 @@ use AavionDB\Core\EventBus;
 use AavionDB\Core\Exceptions\BootstrapException;
 use AavionDB\Core\Exceptions\CommandException;
 use AavionDB\Core\RuntimeState;
+use AavionDB\Storage\BrainRepository;
 
 /**
  * Framework façade exposing runtime lifecycle and command execution entry points.
@@ -76,6 +77,16 @@ final class AavionDB
     }
 
     /**
+     * Registers a custom parser handler via the shared command registry.
+     *
+     * @param callable(AavionDB\Core\ParserContext): void $handler
+     */
+    public static function registerParserHandler(?string $action, callable $handler, int $priority = 0): void
+    {
+        self::commands()->registerParserHandler($action, $handler, $priority);
+    }
+
+    /**
      * Returns diagnostic information collected during bootstrap.
      *
      * @return array<string, mixed>
@@ -115,6 +126,32 @@ final class AavionDB
         $registry = self::$state->container()->get(CommandRegistry::class);
 
         return $registry;
+    }
+
+    /**
+     * Returns the command parser instance.
+     */
+    public static function parser(): CommandParser
+    {
+        self::assertBooted();
+
+        /** @var CommandParser $parser */
+        $parser = self::$state->container()->get(CommandParser::class);
+
+        return $parser;
+    }
+
+    /**
+     * Returns the active brain repository instance.
+     */
+    public static function brains(): BrainRepository
+    {
+        self::assertBooted();
+
+        /** @var BrainRepository $repository */
+        $repository = self::$state->container()->get(BrainRepository::class);
+
+        return $repository;
     }
 
     /**

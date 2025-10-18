@@ -6,6 +6,7 @@ namespace AavionDB\Core;
 
 use DateTimeImmutable;
 use AavionDB\Core\Filesystem\PathLocator;
+use AavionDB\Storage\BrainRepository;
 
 /**
  * Represents the bootstrapped runtime context.
@@ -72,6 +73,12 @@ final class RuntimeState
                 'system_storage' => $paths->systemStorage(),
                 'user_storage' => $paths->userStorage(),
             ];
+        }
+
+        if ($this->container->has(BrainRepository::class)) {
+            /** @var BrainRepository $brains */
+            $brains = $this->container->get(BrainRepository::class);
+            $diagnostics['brain'] = $brains->integrityReport();
         }
 
         if ($this->container->has(CommandRegistry::class)) {

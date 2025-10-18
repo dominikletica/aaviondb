@@ -37,6 +37,14 @@ final class BrainRepository
     private ?string $activeBrainPath = null;
 
     /**
+     * @var array{last_write?: array<string, mixed>|null, last_failure?: array<string, mixed>|null}
+     */
+    private array $integrityState = [
+        'last_write' => null,
+        'last_failure' => null,
+    ];
+
+    /**
      * @param array<string, mixed> $options
      */
     public function __construct(PathLocator $paths, EventBus $events, array $options = [])
@@ -334,6 +342,27 @@ final class BrainRepository
     }
 
     /**
+     * Returns integrity telemetry for diagnostics.
+     *
+     * @return array<string, mixed>
+     */
+    public function integrityReport(): array
+    {
+        $systemPath = $this->paths->systemBrain();
+        $activeSlug = $this->activeBrain();
+        $activePath = $activeSlug !== null ? $this->paths->userBrain($activeSlug) : null;
+
+        return [
+            'system_brain' => $this->describeFile($systemPath),
+            'active_brain' => $activePath ? \array_merge($this->describeFile($activePath), ['slug' => $activeSlug]) : null,
+            'state' => [
+                'last_write' => $this->integrityState['last_write'] ?? null,
+                'last_failure' => $this->integrityState['last_failure'] ?? null,
+            ],
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function readBrain(string $path): array
@@ -374,12 +403,21 @@ final class BrainRepository
             throw new StorageException(sprintf('Unable to replace brain file "%s".', $path));
         }
 
-        if (!$this->verifyBrainIntegrity($path, $json, $expectedHash)) {
-            $this->events->emit('brain.write.retry', [
-                'path' => $path,
-                'attempt' => $attempt + 1,
-                'expected_hash' => $expectedHash,
-            ]);
+        $verification = $this->verifyBrainIntegrity($path, $json, $expectedHash);
+
+        if (!$verification['ok']) {
+            $this->recordIntegrityFailure($path, $verification['reason'], $verification['context']);
+
+            $context = array_merge(
+                    [
+                        'path' => $path,
+                        'attempt' => $attempt + 1,
+                        'expected_hash' => $expectedHash,
+                    ],
+                    $verification['context']
+                );
+
+            $this->events->emit('brain.write.retry', $context);
 
             if ($attempt >= 1) {
                 throw new StorageException(sprintf(
@@ -391,10 +429,16 @@ final class BrainRepository
 
             $this->writeBrain($path, $data, $attempt + 1);
         } else {
-            $this->events->emit('brain.write.completed', [
-                'path' => $path,
-                'hash' => $expectedHash,
-            ]);
+            $this->recordIntegritySuccess($path, $expectedHash, $attempt + 1);
+
+            $this->events->emit('brain.write.completed', array_merge(
+                [
+                    'path' => $path,
+                    'hash' => $expectedHash,
+                    'attempts' => $attempt + 1,
+                ],
+                $verification['context']
+            ));
         }
     }
 
@@ -452,70 +496,116 @@ final class BrainRepository
         return $tmpPath;
     }
 
-    private function verifyBrainIntegrity(string $path, string $expectedJson, string $expectedHash): bool
+    private function verifyBrainIntegrity(string $path, string $expectedJson, string $expectedHash): array
     {
         \clearstatcache(true, $path);
 
         $content = @\file_get_contents($path);
         if ($content === false) {
-            $this->events->emit('brain.write.integrity_failed', [
+            $payload = [
                 'path' => $path,
                 'reason' => 'read_failed',
-            ]);
+                'expected_hash' => $expectedHash,
+            ];
+            $this->events->emit('brain.write.integrity_failed', $payload);
 
-            return false;
+            return [
+                'ok' => false,
+                'reason' => 'read_failed',
+                'context' => [
+                    'expected_hash' => $expectedHash,
+                ],
+            ];
         }
 
         $actualHash = \hash('sha256', $content);
         if ($actualHash !== $expectedHash) {
-            $this->events->emit('brain.write.integrity_failed', [
+            $payload = [
                 'path' => $path,
                 'reason' => 'hash_mismatch',
                 'expected_hash' => $expectedHash,
                 'actual_hash' => $actualHash,
-            ]);
+            ];
+            $this->events->emit('brain.write.integrity_failed', $payload);
 
-            return false;
+            return [
+                'ok' => false,
+                'reason' => 'hash_mismatch',
+                'context' => [
+                    'expected_hash' => $expectedHash,
+                    'actual_hash' => $actualHash,
+                ],
+            ];
         }
 
         if ($content !== $expectedJson) {
-            $this->events->emit('brain.write.integrity_failed', [
+            $payload = [
                 'path' => $path,
                 'reason' => 'content_mismatch',
                 'expected_hash' => $expectedHash,
                 'actual_hash' => $actualHash,
-            ]);
+            ];
+            $this->events->emit('brain.write.integrity_failed', $payload);
 
-            return false;
+            return [
+                'ok' => false,
+                'reason' => 'content_mismatch',
+                'context' => [
+                    'expected_hash' => $expectedHash,
+                    'actual_hash' => $actualHash,
+                ],
+            ];
         }
 
         try {
             $decoded = \json_decode($content, true, 512, JSON_THROW_ON_ERROR);
             $reencoded = CanonicalJson::encode($decoded);
         } catch (\JsonException $exception) {
-            $this->events->emit('brain.write.integrity_failed', [
+            $payload = [
                 'path' => $path,
                 'reason' => 'json_decode_error',
                 'message' => $exception->getMessage(),
                 'expected_hash' => $expectedHash,
-                'actual_hash' => $actualHash,
-            ]);
+            ];
+            $this->events->emit('brain.write.integrity_failed', $payload);
 
-            return false;
+            return [
+                'ok' => false,
+                'reason' => 'json_decode_error',
+                'context' => [
+                    'expected_hash' => $expectedHash,
+                    'message' => $exception->getMessage(),
+                ],
+            ];
         }
 
         if ($reencoded !== $expectedJson) {
-            $this->events->emit('brain.write.integrity_failed', [
+            $payload = [
                 'path' => $path,
                 'reason' => 'canonical_mismatch',
                 'expected_hash' => $expectedHash,
                 'actual_hash' => $actualHash,
-            ]);
+            ];
+            $this->events->emit('brain.write.integrity_failed', $payload);
 
-            return false;
+            return [
+                'ok' => false,
+                'reason' => 'canonical_mismatch',
+                'context' => [
+                    'expected_hash' => $expectedHash,
+                    'actual_hash' => $actualHash,
+                ],
+            ];
         }
 
-        return true;
+        return [
+            'ok' => true,
+            'reason' => null,
+            'context' => [
+                'hash' => $expectedHash,
+                'bytes' => \strlen($expectedJson),
+            ],
+        ];
     }
 
     /**
@@ -666,6 +756,57 @@ final class BrainRepository
             'created_at' => $timestamp,
             'updated_at' => $timestamp,
             'entities' => [],
+        ];
+    }
+
+    private function recordIntegritySuccess(string $path, string $hash, int $attempts): void
+    {
+        $this->integrityState['last_write'] = [
+            'path' => $path,
+            'hash' => $hash,
+            'attempts' => $attempts,
+            'timestamp' => $this->timestamp(),
+        ];
+
+        $this->integrityState['last_failure'] = null;
+    }
+
+    private function recordIntegrityFailure(string $path, string $reason, array $context = []): void
+    {
+        $this->integrityState['last_failure'] = [
+            'path' => $path,
+            'reason' => $reason,
+            'context' => $context,
+            'timestamp' => $this->timestamp(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function describeFile(string $path): array
+    {
+        $exists = \is_file($path);
+        $modifiedAt = null;
+        $size = null;
+
+        if ($exists) {
+            $mtime = @\filemtime($path);
+            if ($mtime !== false) {
+                $modifiedAt = \date(DATE_ATOM, $mtime);
+            }
+
+            $fsize = @\filesize($path);
+            if ($fsize !== false) {
+                $size = $fsize;
+            }
+        }
+
+        return [
+            'path' => $path,
+            'exists' => $exists,
+            'size' => $size,
+            'modified_at' => $modifiedAt,
         ];
     }
 

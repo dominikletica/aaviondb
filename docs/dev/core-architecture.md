@@ -205,10 +205,21 @@ This lifecycle ensures deterministic persistence while keeping read operations i
 - Brain files are written via temporary files located in the same directory, using exclusive locks and a single atomic `rename`.
 - After the swap, the file is re-read immediately; the SHA-256 hash and canonical JSON bytes must match the pre-write payload.
 - Any mismatch triggers a retry (once) and emits diagnostic events:
-  - `brain.write.retry`
-  - `brain.write.integrity_failed`
-  - `brain.write.completed` (on success, includes final hash and attempt count)
+- `brain.write.retry`
+- `brain.write.integrity_failed`
+- `brain.write.completed` (on success, includes final hash and attempt count)
 - Persistent failure raises a `StorageException`, preventing partially written data from being considered valid.
+
+---
+
+### 5.5 Integrity Telemetry
+
+- `BrainRepository::integrityReport()` returns:
+  - Active/system brain paths and timestamps.
+  - Last successful write hash + timestamp.
+  - Pending retries or last failure reason (if applicable).
+- Results are cached in-memory and exposed via `AavionDB::diagnose()`.
+- Event payloads emitted during persistence (`brain.write.*`) include the same summary to keep the UI/diagnostics in sync.
 
 ---
 
@@ -273,6 +284,7 @@ Implementation class: `Core\CommandParser`.
 - Parser diagnostics expose registered handler counts to aid debugging.
 - `BrainRepository` will later expose convenience helpers for registering parser extensions tied to entity syntax (e.g. `entity:version`), keeping parsing and storage extensions aligned.
 - Modules may register handlers directly through `CommandRegistry::registerParserHandler()` or by supplying `['parser' => ...]` metadata during `register()`.
+- The façade exposes thin wrappers (`AavionDB::registerParserHandler()`, `AavionDB::parser()`, `AavionDB::brains()`) so modules can integrate without fetching services manually.
 
 ---
 
@@ -286,6 +298,9 @@ Implementation class: `Core\CommandParser`.
 - Command registry statistics (#commands, duplicates, aliases).
 - Storage integrity summary (hash verification, file timestamps).
 - Parser handler overview (global + per-action counts) for debugging command extensions.
+- Optional sections (when available):
+  - Integrity telemetry from `BrainRepository::integrityReport()`.
+  - Registered parser/storage helper summaries for quick validation.
 
 Diagnostics pull data exclusively from public service APIs to mirror the unified response model.
 
