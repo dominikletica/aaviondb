@@ -69,7 +69,7 @@ It handles initialization, routing, storage, and API dispatch.
 ```php
 require_once __DIR__ . '/system/core.php';
 AavionDB::setup();
-AavionDB::run('list projects');
+AavionDB::command('list projects'); // or: AavionDB::run(list, ['projects'])
 ```
 
 ---
@@ -300,6 +300,8 @@ Content-Type: application/json
 | `backup` | GET | Creates Brain snapshot |
 | `delete` | DELETE | Permanently deletes entity or project |
 
+_(For a more detailed overvies see project's [README.md](../../README.md))_
+
 ---
 
 ### 🧰 Response Format
@@ -338,7 +340,7 @@ Every command — regardless of how it is called — returns the same structured
 | Context | Entry Point | Typical Use |
 |----------|--------------|--------------|
 | **REST** | `/api.php` | External API access via HTTP |
-| **CLI** | `/cli.php` *(planned)* | Administrative shell interface |
+| **CLI** | `/api.php` | Administrative shell interface |
 | **PHP** | `AavionDB::run()` | Internal framework integration |
 
 ---
@@ -348,7 +350,7 @@ Every command — regardless of how it is called — returns the same structured
 | Type | Example | Description |
 |------|----------|-------------|
 | REST | `/api.php?action=show&project=demo&entity=test` | Public API request |
-| CLI | `php cli.php show demo test` | Console execution |
+| CLI | `php api.php show demo test` | Console execution |
 | PHP | `AavionDB::run('show', ['project' => 'demo', 'entity' => 'test']);` | Direct internal call |
 
 ---
@@ -436,13 +438,14 @@ Stored inside `system.brain` under `_auth`.
 
 ## 🧬 Versioning & Commit Hashes
 
+An auto-incremental version number is assigned to each entity.  
 Deterministic SHA-256 hashing ensures data integrity.
 
 ```json
 {
   "id": "entity5",
   "project": "project1",
-  "version": "1.3.0",
+  "version": "13",
   "hash": "8e7a0d6c3d2b...7e9a1",
   "timestamp": "2025-10-18T04:12:31Z",
 }
