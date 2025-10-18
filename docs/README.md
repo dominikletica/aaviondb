@@ -1,3 +1,3 @@
 # AavionDB manual pages
-- [User manual](./MANUAL.md)
+- [User manual](./user/MANUAL.md)
 - [Developer manual](./dev/MANUAL.md)
