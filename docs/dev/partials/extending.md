@@ -1,0 +1,16 @@
+# Extending AavionDB (DRAFT)
+
+> **Status:** Draft  
+> **Last updated:** 0.1.0-dev
+
+1. Create `user/modules/MyModule/module.php` (+ optional `manifest.json`).  
+2. Register commands via the provided `CommandRegistry`/`EventBus` dependencies in `init()`.  
+3. Add parser handlers if custom syntax is required (`registerParserHandler`).  
+4. Add REST/UI integrations as needed (e.g., expose routes, add UI components).  
+5. Document the module (README, config instructions) and add tests.
+
+Guidelines:
+- Keep modules focused and composable; avoid cross-cutting state mutations outside of events/commands.  
+- Always return `CommandResponse`-compatible arrays (`status`, `message`, `data`, `meta`).  
+- Log errors rather than throwing, unless interacting with low-level storage APIs (caller must handle).  
+- Update documentation and changelog when introducing new commands or behaviours.

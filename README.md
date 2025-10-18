@@ -123,6 +123,24 @@ AavionDB::setup(); //can only run once
 
 More commands will be documented as development progresses.
 
+### REST API
+
+- Endpoint: `api.php?action=<command>` (e.g. `api.php?action=list&scope=projects`).
+- JSON payloads are accepted in the request body (`POST`, `PUT`, `PATCH`, `DELETE`).
+- Responses always follow the unified schema `{status, action, message, data, meta}`.
+- All errors are returned with HTTP 400/500; PHP exceptions are logged, not exposed.
+
+### CLI
+
+- Execute commands from the shell:
+
+```bash
+php cli.php "list projects"
+```
+
+- Exit code `0` indicates success; `1` signals an error.
+- Output is JSON-formatted for easy piping to other tools.
+
 ---
 
 ## 🧰 Development Notes

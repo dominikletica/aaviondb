@@ -50,15 +50,34 @@ final class AavionDB
 
         $action = \trim($action);
         if ($action === '') {
-            throw new CommandException('Command action must not be empty.');
+            return self::errorResponse('invalid', 'Command action must not be empty.');
         }
 
         /** @var CommandRegistry $registry */
         $registry = self::$state->container()->get(CommandRegistry::class);
+        
+        try {
+            $response = $registry->dispatch($action, $parameters);
 
-        $response = $registry->dispatch($action, $parameters);
+            return $response->toArray();
+        } catch (CommandException $exception) {
+            self::logger()->warning($exception->getMessage(), ['action' => $action]);
 
-        return $response->toArray();
+            return self::errorResponse($action, $exception->getMessage());
+        } catch (\Throwable $exception) {
+            self::logger()->error('Unhandled command exception', [
+                'action' => $action,
+                'message' => $exception->getMessage(),
+                'exception' => $exception,
+            ]);
+
+            return self::errorResponse($action, 'Internal error during command execution.', [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => \get_class($exception),
+                ],
+            ]);
+        }
     }
 
     /**
@@ -72,9 +91,28 @@ final class AavionDB
 
         /** @var CommandParser $parser */
         $parser = self::$state->container()->get(CommandParser::class);
-        $parsed = $parser->parse($statement);
 
-        return self::run($parsed->action(), $parsed->parameters());
+        try {
+            $parsed = $parser->parse($statement);
+
+            return self::run($parsed->action(), $parsed->parameters());
+        } catch (CommandException $exception) {
+            self::logger()->warning($exception->getMessage(), ['statement' => $statement]);
+
+            return self::errorResponse('parse', $exception->getMessage(), [
+                'statement' => $statement,
+            ]);
+        } catch (\Throwable $exception) {
+            self::logger()->error('Parser failure', [
+                'statement' => $statement,
+                'message' => $exception->getMessage(),
+                'exception' => $exception,
+            ]);
+
+            return self::errorResponse('parse', 'Internal error while parsing command.', [
+                'statement' => $statement,
+            ]);
+        }
     }
 
     /**
@@ -189,5 +227,21 @@ final class AavionDB
         if (self::$state === null) {
             throw new BootstrapException('AavionDB::setup() must be called before invoking runtime methods.');
         }
+    }
+
+    /**
+     * @param array<string, mixed> $meta
+     *
+     * @return array<string, mixed>
+     */
+    private static function errorResponse(string $action, string $message, array $meta = []): array
+    {
+        return [
+            'status' => 'error',
+            'action' => $action,
+            'message' => $message,
+            'data' => null,
+            'meta' => $meta,
+        ];
     }
 }
