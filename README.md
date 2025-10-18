@@ -90,9 +90,13 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 ## 🧭 Usage
 Simply place the framework in your project directory and run the setup command to initialize it.
 
-+++bash
-php aavion setup
-+++
+```bash
+php api.php setup
+```
+or inside PHP:
+```php
+AavionDB::setup() //can only run once
+```
 
 More commands will be documented as development progresses.
 
