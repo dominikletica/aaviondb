@@ -21,25 +21,205 @@
 - User scope defaults: `logger.use`, `paths.read`, `events.dispatch`. Additional capabilities must be declared explicitly and are whitelisted (`commands.register`, `parser.extend`, `storage.read`, `storage.write`).  
 - `ModuleContext` enforces capabilities when modules request services: lacking a capability raises a runtime exception (e.g. `storage.read` required for `brains()`, `commands.register` for `commands()`).
 
+## Directory Layout & Namespaces
+- **System modules** live in `system/modules/<slug>/`; user modules in `user/modules/<slug>/`. Slugs are lowercase, kebab-case (`core`, `project-history`).  
+- Recommended namespace pattern: `AavionDB\Modules\<StudlyName>\*` (e.g. slug `core` ⇒ namespace `AavionDB\Modules\Core`). System modules keep PHP code in `classes/` beneath their slug for deterministic autoloading.  
+- Each module exposes a bootstrap entry class (optional) and command handlers within the module namespace. Keep handler classes focused (`*CommandHandler`, `*Service`).
+
+### Baseline Structure (system module)
+```
+system/modules/<slug>/
+├── manifest.json          # metadata + capabilities + dependencies
+├── module.php             # returns definition array (required)
+├── classes/               # PSR-4 classes (autoloaded via module namespace)
+│   └── ExampleHandler.php
+└── assets/                # optional assets (templates, UI bundles, exports)
+```
+
+## Manifest Schema (`manifest.json`)
+```jsonc
+{
+  "name": "Core Agent",
+  "version": "0.1.0-dev",
+  "description": "Runtime status and diagnostics commands.",
+  "autoload": true,
+  "requires": [
+    "brain@0.1.0-dev"
+  ],
+  "capabilities": [
+    "commands.register",
+    "parser.extend"
+  ],
+  "author": "Codex",
+  "license": "MIT"
+}
+```
+- **name** *(string, required)* – Human-readable module label.  
+- **version** *(string, required)* – Semantic or date-based version; used for exact pinning.  
+- **description** *(string, optional)* – Short summary for diagnostics.  
+- **autoload** *(bool, default: true)* – Auto-initialise during bootstrap.  
+- **requires** *(array<string>)* – Dependency slugs (`module` or `module@1.2.0` for strict pin).  
+- **capabilities** *(array<string>)* – Additional permissions beyond scope defaults (see capability matrix).  
+- Extra fields are allowed and surfaced via diagnostics (e.g. `author`, `links`, `license`).
+
+## `module.php` Contract
+```php
+<?php
+
+use AavionDB\Core\Modules\ModuleContext;
+
+return [
+    'init' => function (ModuleContext $context): void {
+        $commands = $context->commands();
+        $commands->register('status', function (array $parameters) use ($context) {
+            // ... return array or CommandResponse
+        }, [
+            'description' => 'Show runtime status',
+            'parser' => static function ($ctx): void {
+                // optional parser hook
+            },
+        ]);
+    },
+    'commands' => [
+        // optional metadata for listing/help
+    ],
+];
+```
+- The returned array may merge with manifest data (module loader handles this).  
+- `init` (callable) is required for autoload modules. Keep initialisation idempotent.  
+- Use `ModuleContext` to access services; the context enforces capabilities on demand.  
+- Optionally expose a `commands` key describing CLI help metadata (consumed by CoreAgent).
+
+## Command & Parameter Conventions
+- Command names are lowercase, words separated by spaces (`project list`, `auth grant`).  
+- Parameters follow snake_case (e.g. `project`, `entity_slug`, `payload`). Array parameters should use nested keys (`payload.title`).  
+- Responses must return the established schema: `{status, action, message, data, meta}` (use `CommandResponse::fromPayload()` where practical).  
+- Throwing exceptions from handlers should be avoided; return structured errors instead (`CommandResponse::error()`). Unexpected exceptions are trapped by the registry and logged.
+
+### Validation Guidelines
+- Validate required parameters early; respond with `status=error`, `message` explaining what is missing.  
+- Use `BrainRepository`/`AuthManager` helpers for storage/auth mutations—never manipulate `.brain` files directly.  
+- Deny unsupported values explicitly (e.g. invalid log level) and document accepted options in module docs.  
+- Emit events for observable changes (`events.dispatch` capability) to keep diagnostics consistent.
+
 ## Dependencies
 - `requires` accepts module slugs (optionally `slug@1.2.0` for exact version pins).  
 - Dependencies are initialised recursively before the requesting module runs. Missing modules, failed dependency initialisation, or version mismatches block the dependent and surface in diagnostics/events.  
 - Circular relationships are detected; affected modules are quarantined with an explanatory error.
 
 ## System Modules (Foundation Layer)
-| Module | Responsibility (draft) |
-|--------|------------------------|
-| `CoreAgent` | Setup/status/info commands, bootstrap orchestration |
-| `BrainAgent` | Brain management (`init`, `brains`, backups) |
-| `ProjectAgent` | CRUD for projects |
-| `EntityAgent` | Entity lifecycle, versioning |
-| `ExportAgent` | Export/backup to JSON |
-| `AuthAgent` | API key lifecycle (`auth grant/list/revoke/reset`, `api serve/stop`) |
-| `ApiAgent` | REST-facing glue, request validation |
-| `UiAgent` | Web UI integration hooks |
-| `LogAgent` *(planned)* | Log inspection/rotation commands (`log view`, `log rotate`, `log cleanup`) |
+| Module | Scope | Responsibility |
+|--------|--------|----------------|
+| `CoreAgent` | system | Runtime meta commands (version, diagnose, setup status) |
+| `BrainAgent` | system | Brain lifecycle management |
+| `ProjectAgent` | system | Project indexing and metadata |
+| `EntityAgent` | system | Entity versioning workflow |
+| `ExportAgent` | system | Data exports and snapshots |
+| `AuthAgent` | system | API token lifecycle |
+| `ApiAgent` | system | REST endpoint management |
+| `UiAgent` | system | Console / web UI integration |
+| `LogAgent` | system | Operational log access |
+| `EventsAgent` | system | Event bus inspection |
+| `SchedulerAgent` | system | (Future) scheduled job orchestration |
 
-System modules initialise before user modules to guarantee availability of core commands and diagnostics.
+### Module Responsibilities
+- **`CoreAgent` (`core`)** – Runtime meta commands (version, diagnose, setup status)
+  - Expose status/info/diagnostics
+  - Provide help/command listings
+  - Manage bootstrap checks
+- **`BrainAgent` (`brain`)** – Brain lifecycle management
+  - List/init/switch brains
+  - Handle backups and integrity reports
+  - Expose brain config helpers
+- **`ProjectAgent` (`project`)** – Project indexing and metadata
+  - Create/list/remove projects
+  - Manage project-level metadata
+  - Coordinate with entity agent
+- **`EntityAgent` (`entity`)** – Entity versioning workflow
+  - CRUD for entities and versions
+  - Handle canonical hashing
+  - Restore/delete operations
+- **`ExportAgent` (`export`)** – Data exports and snapshots
+  - Command syntax (per README): `export {project} [entity[,entity]]` with optional `:version` / `:hash` selectors
+  - Generate JSON slices for whole brains, projects, or entity subsets
+  - Manage export presets and destination handling
+- **`AuthAgent` (`auth`)** – API token lifecycle
+  - Commands: auth grant/list/revoke/reset
+  - Bootstrap key rotation
+  - Audit logging integration
+- **`ApiAgent` (`api`)** – REST endpoint management
+  - api serve/stop/reset commands
+  - Expose REST diagnostics
+  - Bridge to AuthManager
+- **`UiAgent` (`ui`)** – Console / web UI integration
+  - Serve interactive console
+  - Register UI-specific commands
+  - Link to REST/API for optional remote execution
+- **`LogAgent` (`log`)** – Operational log access
+  - Commands: log view/rotate/cleanup
+  - Expose auth/log diagnostics
+  - Future: log streaming
+- **`EventsAgent` (`events`)** – Event bus inspection
+  - List listeners & emitted events
+  - Subscribe modules for instrumentation
+  - Diagnostics for module telemetry
+- **`SchedulerAgent` (`scheduler`)** – (Future) scheduled job orchestration
+  - Define scheduled command hooks
+  - Integrate with cron/queue backends
+  - Emit scheduler diagnostics
+
+### Implementation TODOs (per module)
+- **Shared tasks for every module**
+  - [ ] Create `system/modules/<slug>/manifest.json` + `module.php` skeleton (declare capabilities & dependencies).
+  - [ ] Register commands via `CommandRegistry` + parser handlers (consistent naming, unified response schema).
+  - [ ] Emit module-specific diagnostics + log meaningful events (`module.initialized`).
+  - [ ] Update developer docs (module partial + CHANGELOG entry) and add follow-up test stubs.
+
+- **`CoreAgent`**
+  - [ ] Implement `status`, `diagnose`, `help` commands with structured output.
+  - [ ] Provide command metadata for auto-generated help listings.
+
+- **`BrainAgent`**
+  - [ ] Commands: `brains`, `brain init`, `brain switch`, `brain backup` (use `BrainRepository` helpers).
+  - [ ] Surface integrity report (link to `AavionDB::diagnose`).
+
+- **`ProjectAgent`**
+  - [ ] Commands: `project list`, `project create`, `project remove`, `project info`.
+  - [ ] Coordinate with `EntityAgent` for cascade effects (e.g., removing entities on delete).
+
+- **`EntityAgent`**
+  - [ ] Commands: `entity list`, `entity show`, `entity save`, `entity delete`, `entity restore`.
+  - [ ] Ensure canonical hashing + versioning semantics align with storage layer.
+
+- **`ExportAgent`**
+  - [ ] Implement `export {project} [entity[,entity]]` parser (support optional `:version` or `:hash` suffix per entity).
+  - [ ] Generate export payloads (full project, subset, or entire brain when `project = *`).
+  - [ ] Manage presets/destinations and emit export diagnostics; optionally enqueue for Scheduler integration (future).
+
+- **`AuthAgent`**
+  - [ ] Commands: `auth grant`, `auth list`, `auth revoke`, `auth reset` (use `BrainRepository` helpers).
+  - [ ] Audit logging (hook into planned LogAgent) + bootstrap key rotation guidance.
+
+- **`ApiAgent`**
+  - [ ] Commands: `api serve`, `api stop`, `api status`, `api reset`.
+  - [ ] Validate REST readiness (token count, bootstrap state) before enabling.
+
+- **`UiAgent`**
+  - [ ] Scaffold interactive CLI/HTTP console endpoints (placeholder stubs acceptable initially).
+  - [ ] Bridge to REST/API for remote execution toggles.
+
+- **`LogAgent`**
+  - [ ] Commands: `log view <level>`, `log rotate`, `log cleanup` (interact with Monolog handlers).
+  - [ ] Provide pagination/filters + integration with upcoming log storage format.
+
+- **`EventsAgent`**
+  - [ ] Commands: `events list`, `events stats`, optional subscription hooks for debugging.
+  - [ ] Surface telemetry from `EventBus` + module diagnostics.
+
+- **`SchedulerAgent`** (future)
+  - [ ] Define abstraction for scheduled commands/jobs (cron-like spec).
+  - [ ] Integrate with LogAgent for execution audits.
+  - [ ] Provide hooks for other modules to register scheduled tasks.
 
 ## Future Work
 - Expand capability matrix (granular read/write separation, filesystem/network access) and introduce policy configuration per deployment.  

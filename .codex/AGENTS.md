@@ -9,7 +9,7 @@
 
 ## Key Concepts
 - **Brains** – JSON-based data stores (`system.brain` + user brains) with deterministic hashing, shared config map, and REST enablement flags.
-- **Modules & Agents** – Auto-discovered via `ModuleLoader`; dependencies are resolved recursively and capability-scoped contexts keep access controlled. System modules provide core agents (Core, Brain, Entity, Project, Export, Auth, API, UI). Custom modules extend behaviour through commands, parser hooks, and events.
+- **Modules & Agents** – Auto-discovered via `ModuleLoader`; dependencies are resolved recursively and capability-scoped contexts keep access controlled. Modules follow the documented structure (`manifest.json`, `module.php`, optional `src/`) and register commands via `ModuleContext`. System modules provide core agents (Core, Brain, Entity, Project, Export, Auth, API, UI). Custom modules extend behaviour through commands, parser hooks, and events.
 - **Unified Commands** – One syntax for CLI, REST, and PHP (`action project entity {json}`); `CommandRegistry` normalises responses and emits diagnostics events.
 - **Entry Points** – `api.php` (REST/PHP), `cli.php` (terminal), `system/core.php` (embedded). All wrap errors in structured responses and log exceptions.
 - **Authentication** – `AuthManager` stores hashed tokens in `system.brain`. Use `BrainRepository` helpers to mint/revoke tokens, toggle API flags, and rotate bootstrap keys. REST stays disabled until `api.enabled = true` and a non-bootstrap token exists; `admin` works only for CLI/UI recovery. Usage is logged for the upcoming log module.
