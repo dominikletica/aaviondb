@@ -342,6 +342,101 @@ final class BrainRepository
     }
 
     /**
+     * Retrieves a configuration value from the active or system brain.
+     *
+     * @param mixed $default
+     *
+     * @return mixed
+     */
+    public function getConfigValue(string $key, $default = null, bool $system = false)
+    {
+        $key = $this->normalizeConfigKey($key);
+        $brain = $system ? $this->loadSystemBrain() : $this->loadActiveBrain();
+
+        if (!isset($brain['config']) || !\is_array($brain['config'])) {
+            return $default;
+        }
+
+        return $brain['config'][$key] ?? $default;
+    }
+
+    /**
+     * Writes a configuration value to the active or system brain.
+     *
+     * @param mixed $value
+     */
+    public function setConfigValue(string $key, $value, bool $system = false): void
+    {
+        $key = $this->normalizeConfigKey($key);
+        $timestamp = $this->timestamp();
+
+        if ($system) {
+            $brain = $this->loadSystemBrain();
+            $brain['config'][$key] = $value;
+            $brain['meta']['updated_at'] = $timestamp;
+            $this->systemBrain = $brain;
+            $this->writeBrain($this->paths->systemBrain(), $brain);
+
+            return;
+        }
+
+        $brain = $this->loadActiveBrain();
+        if (!isset($brain['config']) || !\is_array($brain['config'])) {
+            $brain['config'] = [];
+        }
+
+        $brain['config'][$key] = $value;
+        $brain['meta']['updated_at'] = $timestamp;
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+    }
+
+    /**
+     * Removes a configuration value.
+     */
+    public function deleteConfigValue(string $key, bool $system = false): void
+    {
+        $key = $this->normalizeConfigKey($key);
+        $timestamp = $this->timestamp();
+
+        if ($system) {
+            $brain = $this->loadSystemBrain();
+            if (isset($brain['config'][$key])) {
+                unset($brain['config'][$key]);
+                $brain['meta']['updated_at'] = $timestamp;
+                $this->systemBrain = $brain;
+                $this->writeBrain($this->paths->systemBrain(), $brain);
+            }
+
+            return;
+        }
+
+        $brain = $this->loadActiveBrain();
+        if (isset($brain['config'][$key])) {
+            unset($brain['config'][$key]);
+            $brain['meta']['updated_at'] = $timestamp;
+            $this->activeBrainData = $brain;
+            $this->persistActiveBrain();
+        }
+    }
+
+    /**
+     * Returns all configuration entries.
+     *
+     * @return array<string, mixed>
+     */
+    public function listConfig(bool $system = false): array
+    {
+        $brain = $system ? $this->loadSystemBrain() : $this->loadActiveBrain();
+
+        if (!isset($brain['config']) || !\is_array($brain['config'])) {
+            return [];
+        }
+
+        return $brain['config'];
+    }
+
+    /**
      * Returns integrity telemetry for diagnostics.
      *
      * @return array<string, mixed>
@@ -359,6 +454,7 @@ final class BrainRepository
                 'last_write' => $this->integrityState['last_write'] ?? null,
                 'last_failure' => $this->integrityState['last_failure'] ?? null,
             ],
+            'config' => [],
         ];
     }
 
@@ -630,6 +726,7 @@ final class BrainRepository
             ],
             'projects' => [],
             'commits' => [],
+            'config' => [],
         ];
     }
 
@@ -649,6 +746,7 @@ final class BrainRepository
             ],
             'projects' => [],
             'commits' => [],
+            'config' => [],
         ];
     }
 
@@ -680,6 +778,10 @@ final class BrainRepository
             $merged['meta']['uuid'] = $defaults['meta']['uuid'];
         }
 
+        if (!isset($merged['config']) || !\is_array($merged['config'])) {
+            $merged['config'] = [];
+        }
+
         return $merged;
     }
 
@@ -707,6 +809,10 @@ final class BrainRepository
             $this->activeBrainData = $this->readBrain($this->activeBrainPath ?? $this->paths->userBrain($this->activeBrainSlug ?? 'default'));
         }
 
+        if (!isset($this->activeBrainData['config']) || !\is_array($this->activeBrainData['config'])) {
+            $this->activeBrainData['config'] = [];
+        }
+
         return $this->activeBrainData;
     }
 
@@ -717,6 +823,26 @@ final class BrainRepository
         }
 
         $this->writeBrain($this->activeBrainPath, $this->activeBrainData);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadSystemBrain(): array
+    {
+        if ($this->systemBrain === null) {
+            $this->ensureSystemBrain();
+        }
+
+        if ($this->systemBrain === null) {
+            $this->systemBrain = $this->defaultSystemBrain();
+        }
+
+        if (!isset($this->systemBrain['config']) || !\is_array($this->systemBrain['config'])) {
+            $this->systemBrain['config'] = [];
+        }
+
+        return $this->systemBrain;
     }
 
     /**
@@ -779,6 +905,24 @@ final class BrainRepository
             'context' => $context,
             'timestamp' => $this->timestamp(),
         ];
+    }
+
+    private function normalizeConfigKey(string $key): string
+    {
+        $key = \trim($key);
+
+        if ($key === '') {
+            throw new StorageException('Config key must not be empty.');
+        }
+
+        $normalized = \preg_replace('/[^a-z0-9\-_.]/i', '_', $key) ?? $key;
+        $normalized = \trim(\strtolower($normalized), '-_.');
+
+        if ($normalized === '') {
+            throw new StorageException(\sprintf('Config key "%s" contains no valid characters.', $key));
+        }
+
+        return $normalized;
     }
 
     /**

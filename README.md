@@ -127,8 +127,13 @@ More commands will be documented as development progresses.
 
 ## 🧰 Development Notes
 - Node.js and Composer are used **only for development**; production deployments require PHP 8.1+ only.
+- Install dependencies locally via `composer install` and `npm install` after cloning (both directories are ignored in git).
+- When packaging releases, ship only production-ready dependencies (omit dev packages such as PHPUnit or frontend build tooling).
 - Versioning is handled internally via deterministic commit hashes for integrity verification.
 - JSON exports are structured for high parser compatibility, making aavionDB ideal for AI and automation workflows.
+- Vendors (`/vendor`) and Node modules (`/node_modules`) are excluded from version control.  
+  Run `composer install` and `npm install` to fetch dependencies locally.  
+  When preparing releases, bundle only production dependencies.
 
 ---
 

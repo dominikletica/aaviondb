@@ -34,7 +34,7 @@ final class CommandResponse implements JsonSerializable
      */
     private function __construct(string $status, string $action, string $message, $data, array $meta = [])
     {
-        $this->status = $status;
+        $this->status = $this->normalizeStatus($status);
         $this->action = $action;
         $this->message = $message;
         $this->data = $data;
@@ -65,11 +65,7 @@ final class CommandResponse implements JsonSerializable
             $status = (string) $payload['status'];
             $message = isset($payload['message']) ? (string) $payload['message'] : ($status === 'ok' ? 'ok' : 'error');
             $data = $payload['data'] ?? null;
-            $meta = $payload['meta'] ?? [];
-
-            if (!\is_array($meta)) {
-                throw new CommandException(sprintf('Meta information for command "%s" must be an array.', $action));
-            }
+            $meta = self::coerceMeta($payload['meta'] ?? []);
 
             return new self($status, $action, $message, $data, $meta);
         }
@@ -113,5 +109,41 @@ final class CommandResponse implements JsonSerializable
     {
         return $this->toArray();
     }
-}
 
+    private function normalizeStatus(string $value): string
+    {
+        $value = \strtolower(\trim($value));
+
+        if ($value === 'ok' || $value === 'success') {
+            return 'ok';
+        }
+
+        if ($value === 'error' || $value === 'fail' || $value === 'failed') {
+            return 'error';
+        }
+
+        return $value === '' ? 'ok' : 'error';
+    }
+
+    /**
+     * @param mixed $meta
+     *
+     * @return array<string, mixed>
+     */
+    private static function coerceMeta($meta): array
+    {
+        if (\is_array($meta)) {
+            return $meta;
+        }
+
+        if ($meta === null) {
+            return [];
+        }
+
+        if (\is_scalar($meta)) {
+            return ['value' => $meta];
+        }
+
+        return ['value' => (array) $meta];
+    }
+}

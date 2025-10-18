@@ -13,6 +13,7 @@ use AavionDB\Core\Exceptions\BootstrapException;
 use AavionDB\Core\Exceptions\CommandException;
 use AavionDB\Core\RuntimeState;
 use AavionDB\Storage\BrainRepository;
+use Psr\Log\LoggerInterface;
 
 /**
  * Framework façade exposing runtime lifecycle and command execution entry points.
@@ -152,6 +153,19 @@ final class AavionDB
         $repository = self::$state->container()->get(BrainRepository::class);
 
         return $repository;
+    }
+
+    /**
+     * Returns the framework logger instance.
+     */
+    public static function logger(): LoggerInterface
+    {
+        self::assertBooted();
+
+        /** @var LoggerInterface $logger */
+        $logger = self::$state->container()->get(LoggerInterface::class);
+
+        return $logger;
     }
 
     /**

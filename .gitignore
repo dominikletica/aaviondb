@@ -2,8 +2,21 @@
 /node_modules/
 /dist/
 /vendor/
-/logs/
+/system/storage/logs/
 /tests/coverage/
+
+# Brain storage (contains environment data)
+/system/storage/*.brain
+/user/storage/*.brain
+/user/cache/
+/user/exports/
+
+# Frontend build artefacts
+# Composer & Node lockfiles (retain root-level ones; ignore nested)
+**/composer.lock
+!composer.lock
+**/package-lock.json
+!package-lock.json
 
 # OS artifacts
 .DS_Store

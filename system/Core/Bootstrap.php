@@ -8,7 +8,11 @@ use DateTimeImmutable;
 use AavionDB\Core\Exceptions\BootstrapException;
 use AavionDB\Core\Exceptions\StorageException;
 use AavionDB\Core\Filesystem\PathLocator;
+use AavionDB\Core\Logging\LoggerFactory;
+use AavionDB\Core\Modules\ModuleLoader;
 use AavionDB\Storage\BrainRepository;
+use Monolog\Level;
+use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
 
 /**
@@ -72,6 +76,24 @@ final class Bootstrap
             return $locator;
         });
 
+        $container->set(LoggerInterface::class, function (Container $container) use ($options): LoggerInterface {
+            /** @var PathLocator $paths */
+            $paths = $container->get(PathLocator::class);
+
+            $level = Level::Debug;
+            if (isset($options['log_level']) && \is_string($options['log_level'])) {
+                try {
+                    $level = Level::fromName(\strtoupper($options['log_level']));
+                } catch (\Throwable $exception) {
+                    // Fallback to default debug level if invalid input was provided.
+                }
+            }
+
+            $factory = new LoggerFactory($paths->systemLogs(), 'aaviondb', $level);
+
+            return $factory->create();
+        });
+
         $container->set(EventBus::class, static fn (): EventBus => new EventBus());
 
         $container->set(CommandParser::class, static function (Container $container): CommandParser {
@@ -88,6 +110,14 @@ final class Bootstrap
                 $registry->setParser($container->get(CommandParser::class));
             }
 
+            if ($container->has(EventBus::class)) {
+                $registry->setEventBus($container->get(EventBus::class));
+            }
+
+            if ($container->has(LoggerInterface::class)) {
+                $registry->setLogger($container->get(LoggerInterface::class));
+            }
+
             return $registry;
         });
 
@@ -96,12 +126,28 @@ final class Bootstrap
             $paths = $container->get(PathLocator::class);
             /** @var EventBus $events */
             $events = $container->get(EventBus::class);
-
+            
             $defaults = [
                 'active_brain' => $options['active_brain'] ?? 'default',
             ];
 
             return new BrainRepository($paths, $events, $defaults);
+        });
+
+        $container->set(ModuleLoader::class, function (Container $container): ModuleLoader {
+            /** @var PathLocator $paths */
+            $paths = $container->get(PathLocator::class);
+            /** @var CommandRegistry $commands */
+            $commands = $container->get(CommandRegistry::class);
+            /** @var EventBus $events */
+            $events = $container->get(EventBus::class);
+            /** @var LoggerInterface $logger */
+            $logger = $container->get(LoggerInterface::class);
+
+            $loader = new ModuleLoader($paths, $commands, $events, $logger);
+            $loader->discover();
+
+            return $loader;
         });
     }
 

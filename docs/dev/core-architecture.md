@@ -56,6 +56,22 @@ system/
 
 All classes will follow PSR-12 and ship with PHPDoc on public APIs.
 
+The `PathLocator` service ensures all required directories exist during bootstrap:
+- `system/modules`
+- `system/storage`
+- `system/storage/logs`
+- `user/modules`
+- `user/storage`
+- `user/exports`
+- `user/cache`
+
+### Logging
+
+- Logging uses **Monolog** and is exposed via `AavionDB::logger()` (PSR-3 compliant).
+- Log files live in `system/storage/logs/aaviondb.log`; the directory is created automatically.
+- Default log level is `DEBUG`; override by passing `['log_level' => 'info']` (or any Monolog level name) into `AavionDB::setup()`.
+- Modules can obtain the logger either through the façade helper or the container (`LoggerInterface`).
+
 ---
 
 ## 3. Facade (`system/core.php`)
@@ -70,9 +86,13 @@ final class AavionDB
     public static function setup(array $options = []): void;
     public static function run(string $action, array $parameters = []): array;
     public static function command(string $statement): array;
+    public static function registerParserHandler(?string $action, callable $handler, int $priority = 0): void;
     public static function diagnose(): array;
     public static function events(): Core\EventBus;
     public static function commands(): Core\CommandRegistry;
+    public static function parser(): Core\CommandParser;
+    public static function brains(): Storage\BrainRepository;
+    public static function logger(): Psr\Log\LoggerInterface;
     public static function isBooted(): bool;
 }
 ```
@@ -80,6 +100,9 @@ final class AavionDB
 - `setup()` delegates to `Core\Bootstrap`.
 - `run()` executes a command by name, guaranteeing unified response structure.
 - `command()` parses human-readable CLI statements into `run()`.
+- `registerParserHandler()` allows modules to plug into the shared parser without container lookups.
+- `parser()` and `brains()` expose shared services for module code.
+- `logger()` returns the Monolog-backed PSR-3 logger instance.
 - `diagnose()` gathers diagnostics (loaded modules, brain state, config).
 - The façade tracks boot state via a `Core\RuntimeState` singleton.
 
@@ -118,6 +141,7 @@ Top-level keys:
 | `meta` | object | Brain metadata (slug, UUIDv4, timestamps, schema version). |
 | `projects` | object | Map of projects keyed by slug. |
 | `commits` | object | Global lookup by commit hash (optional optimisation). |
+| `config` | object | Key/value store for lightweight configuration. |
 
 Project object:
 
@@ -175,6 +199,7 @@ The structure intentionally keeps associative maps at every layer to retain dete
 - Persist changes via canonical encoding to ensure deterministic bytes & hashes.
 - Emit storage events on significant operations (project/entity creation, version commits).
 - Maintain a global commit lookup (`commits`) to resolve hashes → project/entity/version.
+- Offer a unified key/value configuration store (`config`) accessible via repository helpers for both system and user brains.
 
 Any write must be atomic (write to temp file, `rename()`).
 
@@ -200,19 +225,29 @@ This lifecycle ensures deterministic persistence while keeping read operations i
 
 ---
 
-### 5.4 Atomic Persistence Guarantees
+### 5.4 Configuration Store
+
+- Both system and user brains expose a `config` map for lightweight settings.
+- Repository helpers: `setConfigValue()`, `getConfigValue()`, `deleteConfigValue()`, `listConfig()`.
+- Keys are normalised (lowercase, slug-safe) and persisted alongside standard brain metadata.
+- User-facing `set/get` commands operate on the *active user brain*; system modules may opt into the system brain by passing `$system = true`.
+- Updates reuse the canonical write pipeline and therefore inherit the same integrity guarantees as entity commits.
+
+---
+
+### 5.5 Atomic Persistence Guarantees
 
 - Brain files are written via temporary files located in the same directory, using exclusive locks and a single atomic `rename`.
 - After the swap, the file is re-read immediately; the SHA-256 hash and canonical JSON bytes must match the pre-write payload.
 - Any mismatch triggers a retry (once) and emits diagnostic events:
-- `brain.write.retry`
+  - `brain.write.retry`
 - `brain.write.integrity_failed`
 - `brain.write.completed` (on success, includes final hash and attempt count)
 - Persistent failure raises a `StorageException`, preventing partially written data from being considered valid.
 
 ---
 
-### 5.5 Integrity Telemetry
+### 5.6 Integrity Telemetry
 
 - `BrainRepository::integrityReport()` returns:
   - Active/system brain paths and timestamps.
@@ -232,12 +267,27 @@ This lifecycle ensures deterministic persistence while keeping read operations i
 - Names are stored in lowercase; aliases permitted via metadata.
 - `CommandResponse` is a value object (status, message, payload, meta).
 - Parser integration: `CommandRegistry::setParser()` is invoked during bootstrap, enabling modules to call `registerParserHandler()` or provide `['parser' => callable|array]` metadata when registering commands.
+- Dispatch emits `command.executed` / `command.failed` events (via `EventBus`) and logs unexpected exceptions through the shared logger. The resulting `CommandResponse` always normalises status (`ok`/`error`), message, and `meta` structure.
 
 Initial built-in commands (to be supplied by system modules later) will follow the same interface.
 
 ---
 
-## 7. Event Bus
+## 7. Module Loader
+
+`Core\Modules\ModuleLoader` is responsible for discovering and managing module metadata.
+
+- Scans `system/modules/*` and `user/modules/*` for directories containing `module.php` and optional `manifest.json`.
+- Merges manifest + definition metadata, validates required fields, and records issues for diagnostics.
+- Stores descriptors with scope (`system`/`user`), dependencies (`requires`), autoload flags, and the exported `init` callable.
+- Emits structured diagnostics via `ModuleLoader::diagnostics()` (exposed through `AavionDB::diagnose()`).
+- Future work: dependency graph resolution, lifecycle execution (init hooks), and command/parser registration.
+
+Discovered modules are currently cached in-memory during bootstrap; re-discovery can be triggered by calling `ModuleLoader::discover()` again when hot-loading is needed.
+
+---
+
+## 8. Event Bus
 
 `Core\EventBus` offers a minimal publish/subscribe mechanism:
 
@@ -250,7 +300,7 @@ Events will be namespaced (`brain.loaded`, `command.executed`, `storage.commit.c
 
 ---
 
-## 8. Command Parsing Layer
+## 9. Command Parsing Layer
 
 The parser converts human-readable statements (`"save demo article {...}"`) into structured parameters for the dispatcher.  
 Implementation class: `Core\CommandParser`.
@@ -288,7 +338,7 @@ Implementation class: `Core\CommandParser`.
 
 ---
 
-## 9. Diagnostic Data
+## 10. Diagnostic Data
 
 `AavionDB::diagnose()` returns:
 
@@ -306,7 +356,7 @@ Diagnostics pull data exclusively from public service APIs to mirror the unified
 
 ---
 
-## 10. Documentation & Changelog
+## 11. Documentation & Changelog
 
 - This file remains the authoritative core spec.
 - `docs/dev/MANUAL.md` will link here and focus on conceptual overview.
@@ -315,7 +365,7 @@ Diagnostics pull data exclusively from public service APIs to mirror the unified
 
 ---
 
-## 11. Next Steps
+## 12. Next Steps
 
 1. Update `docs/dev/MANUAL.md` to reference this blueprint.
 2. Scaffold filesystem layout (`system/Core/...`, `system/Storage/...`).

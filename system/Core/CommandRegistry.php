@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AavionDB\Core;
 
 use AavionDB\Core\Exceptions\CommandException;
+use Psr\Log\LoggerInterface;
 
 /**
  * Central registry responsible for storing and executing commands.
@@ -12,6 +13,10 @@ use AavionDB\Core\Exceptions\CommandException;
 final class CommandRegistry
 {
     private ?CommandParser $parser = null;
+
+    private ?EventBus $events = null;
+
+    private ?LoggerInterface $logger = null;
 
     /**
      * @var array<string, array{name: string, handler: callable, meta: array<string, mixed>}>
@@ -58,9 +63,39 @@ final class CommandRegistry
         $entry = $this->commands[$normalized];
         /** @var callable(array<string, mixed>): mixed $handler */
         $handler = $entry['handler'];
-        $result = $handler($parameters);
+        $start = \microtime(true);
 
-        return CommandResponse::fromPayload($normalized, $result, $parameters);
+        try {
+            $result = $handler($parameters);
+            $response = CommandResponse::fromPayload($normalized, $result, $parameters);
+
+            $this->emit('command.executed', [
+                'action' => $normalized,
+                'status' => $response->toArray()['status'],
+                'meta' => $response->toArray()['meta'] ?? [],
+                'duration_ms' => (int) ((\microtime(true) - $start) * 1000),
+            ]);
+
+            return $response;
+        } catch (\Throwable $exception) {
+            $this->logError($normalized, $exception);
+            $this->emit('command.failed', [
+                'action' => $normalized,
+                'exception' => $exception,
+                'duration_ms' => (int) ((\microtime(true) - $start) * 1000),
+            ]);
+
+            return CommandResponse::error(
+                $normalized,
+                'Unexpected exception during command execution.',
+                [
+                    'exception' => [
+                        'message' => $exception->getMessage(),
+                        'type' => \get_class($exception),
+                    ],
+                ]
+            );
+        }
     }
 
     /**
@@ -84,6 +119,16 @@ final class CommandRegistry
     public function setParser(CommandParser $parser): void
     {
         $this->parser = $parser;
+    }
+
+    public function setEventBus(EventBus $events): void
+    {
+        $this->events = $events;
+    }
+
+    public function setLogger(LoggerInterface $logger): void
+    {
+        $this->logger = $logger;
     }
 
     public function parser(): ?CommandParser
@@ -170,5 +215,25 @@ final class CommandRegistry
         }
 
         return $handlers;
+    }
+
+    private function emit(string $event, array $payload = []): void
+    {
+        if ($this->events === null) {
+            return;
+        }
+
+        $this->events->emit($event, $payload);
+    }
+
+    private function logError(string $action, \Throwable $exception): void
+    {
+        if ($this->logger === null) {
+            return;
+        }
+
+        $this->logger->error(sprintf('Command "%s" failed: %s', $action, $exception->getMessage()), [
+            'exception' => $exception,
+        ]);
     }
 }

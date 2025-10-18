@@ -38,6 +38,11 @@ final class PathLocator
         return $this->system() . DIRECTORY_SEPARATOR . 'storage';
     }
 
+    public function systemLogs(): string
+    {
+        return $this->systemStorage() . DIRECTORY_SEPARATOR . 'logs';
+    }
+
     public function userStorage(): string
     {
         return $this->user() . DIRECTORY_SEPARATOR . 'storage';
@@ -72,6 +77,7 @@ final class PathLocator
     {
         $directories = [
             $this->systemStorage(),
+            $this->systemLogs(),
             $this->systemModules(),
             $this->user(),
             $this->userStorage(),
@@ -108,4 +114,3 @@ final class PathLocator
         return $slug === '' ? 'default' : $slug;
     }
 }
-
