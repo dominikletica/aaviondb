@@ -3,7 +3,7 @@
 > Maintainer: Codex (GPT-5)  
 > Purpose: Track implementation decisions, open questions, and follow-up tasks during core development.
 
-## 2025-02-14
+## 2025-10-18
 
 - **Canonical JSON & Hashing**  
   - Sort associative keys recursively; keep numeric arrays ordered.  
@@ -20,7 +20,7 @@
   2. Add diagnostics coverage for brain integrity checks.  
   3. Define module registration workflow for parser handlers.
 
-## 2025-02-14 – Evening Session
+## 2025-10-18 – Morning Session
 
 - Implemented base façade (`system/core.php`) with bootstrap, command dispatch, diagnostics wiring, and test-only reset helper.
 - Added core services: `Container`, `CommandRegistry`, `CommandResponse`, `EventBus`, `RuntimeState`, and helper utilities.
@@ -40,7 +40,7 @@
 - TODO: System-level log module (commands `log view`, `log rotate`, `log cleanup`, …) to expose/manipulate Monolog output.
 - TODO: Flesh out `docs/dev/partials/security.md` with sandboxing/permission model once defined.
 
-## 2025-02-15
+## 2025-10-18 – Afternoon Session
 
 - Hardened façade bootstrap: `AavionDB::setup()` is now idempotent/lazy and runtime accessors auto-bootstrap. Added `AavionDB::auth()` accessor.
 - Introduced `Core\Security\AuthManager` and expanded `BrainRepository` schema (`auth`, `api` sections) with atomic token usage tracking.
