@@ -77,6 +77,28 @@
 ## 🔒 Security & Permissions
 - [`docs/dev/partials/security.md`](./partials/security.md) *(DRAFT – outlines pending)*
 
+## 🧭 Planned Features & Future Improvements
+
+> This section collects conceptual and architectural goals that are intended for future releases of **AavionDB** and its ecosystem.  
+> These items are not yet implemented but serve as design reminders for Codex and contributors.
+
+- **Decouple UI Interface** → Migrate the integrated management UI into a standalone project: **AavionStudio**, a Vite-powered web application using TailwindCSS, PostCSS, Alpine.js, and Tabler Icons.  
+- **Add Fieldset Linting Module** → Introduce a `SchemaAgent` that hooks into `save project-slug:schema` commands and validates payloads against JSON Schemas stored as entities inside the userspace project `fieldsets`. 
+- **Schema Versioning & Compatibility Layer** → Add support for versioned schemas (e.g., `schema@19`) with backward compatibility validation between revisions.  
+- **Consistent Version Handling** → Change entity version handling to move from :version to @version.  
+- **Extended Diagnostic Dashboard** → Enhance the built-in diagnostics with dependency visualization, memory footprint tracking, and event throughput statistics.  
+- **Testing Module Integration** → Provide a dedicated Testing Agent that coordinates `phpunit` runs, aggregates logs, and produces comprehensive QA reports.  
+- **Live Event Monitor** → Add real-time event tracing within AavionStudio using a WebSocket bridge.  
+- **WebSocket Bridge Agent** → Implement push-based data synchronization between AavionDB and connected Studio clients.  
+- **Enhanced REST API Layer** → Extend API with batched transactions, asynchronous exports, and granular action scopes.  
+- **Grav Plugin Bridge** → Build a plugin integration to expose AavionDB data as virtual pages and blueprints directly inside Grav CMS.  
+- **Schema-Aware Exports** → Enable exports that respect fieldset definitions for cleaner, LLM-optimized JSON output.  
+- **Access Control Extensions** → Expand the Auth Agent with scoped API keys, command-level permissions, and optional role sets.  
+- **UI Extensions System** → Allow Studio-level plugins to register custom dashboards, data visualizers, or tool panels via the UI Agent.  
+- **Brain Integrity Utilities** → Add validation, compaction, and self-repair tools for Brain files.  
+- **Performance Optimizations** → Introduce schema caching, delta-save operations, and faster lookup indexes for large datasets.  
+- **LLM-optimized Exporter** → Implement advanced export profiles optimized for contextual AI ingestion and token-aware data segmentation.
+
 ## 📎 Appendix
 - [`/.codex/AGENTS.md`](../../.codex/AGENTS.md) – quick overview & workflow guidance  
 - [`CHANGELOG.md`](../../CHANGELOG.md) – release notes  
