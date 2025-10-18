@@ -2,9 +2,9 @@
 > This project is under active development and not yet ready for production use.  
 > Clone, test, and experiment at your own risk.
 
-# 🧠 Welcome to aavionDB
+# 🧠 Welcome to AavionDB
 
-**aavionDB** is a modular, lightweight PHP framework for flexible data management, built around JSON serialization and designed to work in almost any PHP environment.  
+**AavionDB** is a modular, lightweight PHP framework for flexible data management, built around JSON serialization and designed to work in almost any PHP environment.  
 It offers both a **native PHP API** and a **REST interface** for full integration into your existing projects.
 
 ## ✨ Key Features
@@ -85,6 +85,28 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `help` | Lists all available commands and usage syntax. |
 | `status` / `info` | Displays framework version, memory usage, author info, GitHub link, and active brain. |
 
+Commands can be invoked universally across interfaces:
+
+REST:
+```bash
+GET api.php?command
+{
+"list projects"
+}
+```
+
+PHP:
+```php
+AavionDB::command('list projects')
+```
+
+CLI:
+```bash
+php api.php list projects
+```
+
+Note: The preferred method is to use a parametric approach passing parameters and values: `brain`, `project`, `entity`, `ref`, `payload`, ...
+
 ---
 
 ## 🧭 Usage
@@ -95,7 +117,8 @@ php api.php setup
 ```
 or inside PHP:
 ```php
-AavionDB::setup() //can only run once
+include aaviondb/api.php;
+AavionDB::setup(); //can only run once
 ```
 
 More commands will be documented as development progresses.
