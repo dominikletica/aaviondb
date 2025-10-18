@@ -1,6 +1,6 @@
 {
     "name": "dominikletica/aaviondb",
-    "description": "aavionDB – modular PHP-framework for JSON-based storage, versioning & AI-exports",
+    "description": "aavionDB \u2013 modular PHP-framework for JSON-based storage, versioning & AI-exports",
     "version": "0.1.0",
     "type": "library",
     "license": "MIT",

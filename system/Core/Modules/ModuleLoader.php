@@ -243,6 +243,8 @@ final class ModuleLoader
                 return;
             }
 
+            $this->loadModuleClasses($descriptor);
+
             $context = new ModuleContext(
                 $descriptor,
                 $this->container,
@@ -546,6 +548,34 @@ final class ModuleLoader
         }
 
         return $capabilities;
+    }
+
+    private function loadModuleClasses(ModuleDescriptor $descriptor): void
+    {
+        $classesDir = $descriptor->path() . DIRECTORY_SEPARATOR . 'classes';
+        if (!\is_dir($classesDir)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(
+                $classesDir,
+                \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::CURRENT_AS_FILEINFO
+            )
+        );
+
+        /** @var \SplFileInfo $file */
+        foreach ($iterator as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+
+            if (\strtolower($file->getExtension()) !== 'php') {
+                continue;
+            }
+
+            require_once $file->getPathname();
+        }
     }
 
     private function resolveString(string $key, array $primary, array $secondary, string $fallback): string

@@ -50,3 +50,52 @@
 - `BrainRepository` exposes helpers for token lifecycle (`registerAuthToken`, `revokeAuthToken`, `updateBootstrapKey`, `setApiEnabled`) so modules can mutate security state safely.
 - Minimal sandbox/dependency pass: ModuleLoader enforces exact dependency availability (with cycle detection) and capability whitelists (system defaults vs user opt-in). `ModuleContext` throws when modules misuse restricted services.
 - Documented module scaffolding (directory layout, namespace guidance, manifest schema, command/parameter conventions) and created per-module TODO checklists for upcoming implementation phases.
+- ModuleLoader now auto-loads `classes/` PHP files per module via manual require, ensuring deployments work without Composer.
+
+### Module Implementation Roadmap (WIP)
+
+**Shared tasks (apply to every module)**
+- [ ] Scaffold `system/modules/<slug>/manifest.json` + `module.php` with declared capabilities/dependencies.
+- [ ] Register commands via `CommandRegistry` + parser hooks (consistent naming, unified response schema).
+- [ ] Emit module diagnostics, log meaningful events, update docs/CHANGELOG, and create PHPUnit stubs.
+
+**CoreAgent (`core`)**
+- [ ] Implement `status`, `diagnose`, `help`; provide command metadata for auto-help listings.
+
+**BrainAgent (`brain`)**
+- [ ] Commands: `brains`, `brain init`, `brain switch`, `brain backup`; surface integrity report.
+
+**ProjectAgent (`project`)**
+- [ ] Commands: `project list/create/remove/info`; coordinate cascade effects with EntityAgent.
+
+**EntityAgent (`entity`)**
+- [ ] Commands: `entity list/show/save/delete/restore`; enforce hashing + version semantics.
+
+**ExportAgent (`export`)**
+- [ ] Parser for `export {project} [entity[,entity]]` + optional `:version`/`:hash` selectors.
+- [ ] Generate export payloads (project, subsets, or entire brain via `project=*`).
+- [ ] Manage presets/destinations; prepare Scheduler hooks for async exports.
+
+**AuthAgent (`auth`)**
+- [ ] Commands: `auth grant/list/revoke/reset` using repository helpers.
+- [ ] Integrate audit logging (LogAgent) + bootstrap key guidance.
+
+**ApiAgent (`api`)**
+- [ ] Commands: `api serve/stop/status/reset`; validate REST readiness before enabling.
+
+**UiAgent (`ui`)**
+- [ ] Scaffold CLI/HTTP console stubs; bridge to REST/API for optional remote execution.
+
+**LogAgent (`log`)**
+- [ ] Commands: `log view <level>`, `log rotate`, `log cleanup` with filters/pagination.
+- [ ] Integrate with future log storage abstraction.
+
+**EventsAgent (`events`)**
+- [ ] Commands: `events list`, `events stats`, optional subscription hooks; surface EventBus telemetry.
+
+**SchedulerAgent (`scheduler`)** *(future)*
+- [ ] Define scheduled job abstraction (cron-like spec + persistence).
+- [ ] Hook into LogAgent for execution audits and expose registration API for other modules.
+- [ ] Provide CLI commands (`scheduler list`, `scheduler run`, `scheduler enable/disable`) for cron/automation integration.
+
+> Next up after the break: begin with **CoreAgent** to establish baseline command conventions; other modules will follow in the listed order unless priorities shift.

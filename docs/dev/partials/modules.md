@@ -23,7 +23,7 @@
 
 ## Directory Layout & Namespaces
 - **System modules** live in `system/modules/<slug>/`; user modules in `user/modules/<slug>/`. Slugs are lowercase, kebab-case (`core`, `project-history`).  
-- Recommended namespace pattern: `AavionDB\Modules\<StudlyName>\*` (e.g. slug `core` ⇒ namespace `AavionDB\Modules\Core`). System modules keep PHP code in `classes/` beneath their slug for deterministic autoloading.  
+- Recommended namespace pattern: `AavionDB\Modules\<StudlyName>\*` (e.g. slug `core` ⇒ namespace `AavionDB\Modules\Core`). PHP files inside `classes/` are auto-required during module initialisation (no Composer autoload required).  
 - Each module exposes a bootstrap entry class (optional) and command handlers within the module namespace. Keep handler classes focused (`*CommandHandler`, `*Service`).
 
 ### Baseline Structure (system module)
@@ -168,58 +168,20 @@ return [
   - Integrate with cron/queue backends
   - Emit scheduler diagnostics
 
-### Implementation TODOs (per module)
-- **Shared tasks for every module**
-  - [ ] Create `system/modules/<slug>/manifest.json` + `module.php` skeleton (declare capabilities & dependencies).
-  - [ ] Register commands via `CommandRegistry` + parser handlers (consistent naming, unified response schema).
-  - [ ] Emit module-specific diagnostics + log meaningful events (`module.initialized`).
-  - [ ] Update developer docs (module partial + CHANGELOG entry) and add follow-up test stubs.
+> Implementation TODOs are tracked centrally in `.codex/NOTES.md`.
 
-- **`CoreAgent`**
-  - [ ] Implement `status`, `diagnose`, `help` commands with structured output.
-  - [ ] Provide command metadata for auto-generated help listings.
-
-- **`BrainAgent`**
-  - [ ] Commands: `brains`, `brain init`, `brain switch`, `brain backup` (use `BrainRepository` helpers).
-  - [ ] Surface integrity report (link to `AavionDB::diagnose`).
-
-- **`ProjectAgent`**
-  - [ ] Commands: `project list`, `project create`, `project remove`, `project info`.
-  - [ ] Coordinate with `EntityAgent` for cascade effects (e.g., removing entities on delete).
-
-- **`EntityAgent`**
-  - [ ] Commands: `entity list`, `entity show`, `entity save`, `entity delete`, `entity restore`.
-  - [ ] Ensure canonical hashing + versioning semantics align with storage layer.
-
-- **`ExportAgent`**
-  - [ ] Implement `export {project} [entity[,entity]]` parser (support optional `:version` or `:hash` suffix per entity).
-  - [ ] Generate export payloads (full project, subset, or entire brain when `project = *`).
-  - [ ] Manage presets/destinations and emit export diagnostics; optionally enqueue for Scheduler integration (future).
-
-- **`AuthAgent`**
-  - [ ] Commands: `auth grant`, `auth list`, `auth revoke`, `auth reset` (use `BrainRepository` helpers).
-  - [ ] Audit logging (hook into planned LogAgent) + bootstrap key rotation guidance.
-
-- **`ApiAgent`**
-  - [ ] Commands: `api serve`, `api stop`, `api status`, `api reset`.
-  - [ ] Validate REST readiness (token count, bootstrap state) before enabling.
-
-- **`UiAgent`**
-  - [ ] Scaffold interactive CLI/HTTP console endpoints (placeholder stubs acceptable initially).
-  - [ ] Bridge to REST/API for remote execution toggles.
-
-- **`LogAgent`**
-  - [ ] Commands: `log view <level>`, `log rotate`, `log cleanup` (interact with Monolog handlers).
-  - [ ] Provide pagination/filters + integration with upcoming log storage format.
-
-- **`EventsAgent`**
-  - [ ] Commands: `events list`, `events stats`, optional subscription hooks for debugging.
-  - [ ] Surface telemetry from `EventBus` + module diagnostics.
-
-- **`SchedulerAgent`** (future)
-  - [ ] Define abstraction for scheduled commands/jobs (cron-like spec).
-  - [ ] Integrate with LogAgent for execution audits.
-  - [ ] Provide hooks for other modules to register scheduled tasks.
+### Module Documentation Stubs
+- [`modules/core.md`](./modules/core.md) – CoreAgent details *(draft)*
+- [`modules/brain.md`](./modules/brain.md) – BrainAgent *(draft)*
+- [`modules/project.md`](./modules/project.md) – ProjectAgent *(draft)*
+- [`modules/entity.md`](./modules/entity.md) – EntityAgent *(draft)*
+- [`modules/export.md`](./modules/export.md) – ExportAgent *(draft)*
+- [`modules/auth.md`](./modules/auth.md) – AuthAgent *(draft)*
+- [`modules/api.md`](./modules/api.md) – ApiAgent *(draft)*
+- [`modules/ui.md`](./modules/ui.md) – UiAgent *(draft)*
+- [`modules/log.md`](./modules/log.md) – LogAgent *(draft)*
+- [`modules/events.md`](./modules/events.md) – EventsAgent *(draft)*
+- [`modules/scheduler.md`](./modules/scheduler.md) – SchedulerAgent *(draft)*
 
 ## Future Work
 - Expand capability matrix (granular read/write separation, filesystem/network access) and introduce policy configuration per deployment.  
