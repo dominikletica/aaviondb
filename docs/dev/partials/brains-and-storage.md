@@ -21,6 +21,7 @@
 ## Repository Helpers
 - `listProjects()`, `listEntities()`, `saveEntity()`, `getEntityVersion()` manage deterministic storage.  
 - Config API: `setConfigValue()`, `getConfigValue()`, `deleteConfigValue()`, `listConfig()` (supports system/user brains, performs key normalization).  
+- Auth/API helpers: `registerAuthToken()`, `revokeAuthToken()`, `listAuthTokens()`, `setApiEnabled()`, `isApiEnabled()`, `updateBootstrapKey()` provide canonical mutations for security state (emit events, update telemetry).  
 - Atomic writes with integrity verification (write temp file → rename → re-read + hash validation); retries once on mismatch, logs failures, records telemetry (`integrityReport()`).
 
 ## Integrity Report

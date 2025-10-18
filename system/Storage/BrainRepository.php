@@ -437,6 +437,244 @@ final class BrainRepository
     }
 
     /**
+     * Registers a new API token and returns its metadata alongside the plain token.
+     *
+     * @param array<string, mixed> $metadata
+     *
+     * @return array<string, mixed>
+     */
+    public function registerAuthToken(string $token, array $metadata = []): array
+    {
+        $token = trim($token);
+        if ($token === '') {
+            throw new StorageException('Auth token must not be empty.');
+        }
+
+        $hash = \hash('sha256', $token);
+        $timestamp = $this->timestamp();
+        $created = false;
+
+        $entry = [
+            'hash' => $hash,
+            'status' => 'active',
+            'created_at' => $metadata['created_at'] ?? $timestamp,
+            'created_by' => $metadata['created_by'] ?? null,
+            'token_preview' => $metadata['token_preview'] ?? $this->tokenPreview($token),
+            'last_used_at' => null,
+            'meta' => isset($metadata['meta']) && \is_array($metadata['meta']) ? $metadata['meta'] : [],
+        ];
+
+        if (isset($metadata['label'])) {
+            $entry['label'] = (string) $metadata['label'];
+        }
+
+        if (isset($metadata['expires_at']) && \is_string($metadata['expires_at'])) {
+            $entry['expires_at'] = $metadata['expires_at'];
+        }
+
+        $this->updateSystemBrain(function (array &$brain) use ($hash, &$entry, &$created, $timestamp): void {
+            $brain['auth'] = $this->mergeAuthSection($brain['auth'] ?? [], $this->defaultAuthState());
+            $brain['api'] = $this->mergeApiSection($brain['api'] ?? [], $this->defaultApiState());
+
+            $existing = $brain['auth']['keys'][$hash] ?? null;
+            if (\is_array($existing)) {
+                // Preserve previous metadata that should survive re-registration.
+                if (isset($existing['last_used_at'])) {
+                    $entry['last_used_at'] = $existing['last_used_at'];
+                }
+
+                if (isset($existing['meta']) && \is_array($existing['meta']) && $entry['meta'] === []) {
+                    $entry['meta'] = $existing['meta'];
+                }
+
+                if (isset($existing['label']) && !isset($entry['label'])) {
+                    $entry['label'] = $existing['label'];
+                }
+            } else {
+                $created = true;
+            }
+
+            $brain['auth']['keys'][$hash] = $entry;
+            $brain['auth']['bootstrap_active'] = false;
+            $brain['auth']['last_rotation_at'] = $timestamp;
+        });
+
+        $payload = $entry;
+        $payload['token'] = $token;
+
+        if ($created) {
+            $this->events->emit('auth.key.created', [
+                'hash' => $hash,
+                'label' => $entry['label'] ?? null,
+                'created_at' => $entry['created_at'],
+            ]);
+        } else {
+            $this->events->emit('auth.key.updated', [
+                'hash' => $hash,
+                'label' => $entry['label'] ?? null,
+            ]);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Revokes an existing API token. Accepts plain token or sha256 hash.
+     *
+     * @param array<string, mixed> $metadata
+     */
+    public function revokeAuthToken(string $identifier, array $metadata = []): bool
+    {
+        $hash = $this->normalizeTokenHash($identifier);
+        $timestamp = $this->timestamp();
+        $revoked = false;
+
+        $this->updateSystemBrain(function (array &$brain) use ($hash, $timestamp, $metadata, &$revoked): void {
+            $brain['auth'] = $this->mergeAuthSection($brain['auth'] ?? [], $this->defaultAuthState());
+            $brain['api'] = $this->mergeApiSection($brain['api'] ?? [], $this->defaultApiState());
+
+            if (!isset($brain['auth']['keys'][$hash]) || !\is_array($brain['auth']['keys'][$hash])) {
+                return;
+            }
+
+            $entry = $brain['auth']['keys'][$hash];
+            $entry['hash'] = $hash;
+            $entry['status'] = 'revoked';
+            $entry['revoked_at'] = $timestamp;
+
+            if (isset($metadata['revoked_by'])) {
+                $entry['revoked_by'] = $metadata['revoked_by'];
+            }
+
+            if (isset($metadata['reason'])) {
+                $entry['revoked_reason'] = $metadata['reason'];
+            }
+
+            $brain['auth']['keys'][$hash] = $entry;
+            $revoked = true;
+
+            $active = $this->countActiveAuthKeys($brain['auth']['keys']);
+            if ($active === 0) {
+                $brain['auth']['bootstrap_active'] = true;
+                $brain['api']['enabled'] = false;
+                $brain['api']['last_disabled_at'] = $timestamp;
+            }
+        });
+
+        if ($revoked) {
+            $this->events->emit('auth.key.revoked', [
+                'hash' => $hash,
+                'reason' => $metadata['reason'] ?? null,
+            ]);
+        }
+
+        return $revoked;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listAuthTokens(bool $includeRevoked = true): array
+    {
+        $state = $this->systemAuthState();
+        $keys = $state['auth']['keys'] ?? [];
+
+        $result = [];
+        foreach ($keys as $entry) {
+            if (!\is_array($entry)) {
+                continue;
+            }
+
+            if (!$includeRevoked && ($entry['status'] ?? 'active') !== 'active') {
+                continue;
+            }
+
+            $result[] = $entry;
+        }
+
+        return $result;
+    }
+
+    public function setApiEnabled(bool $enabled, array $metadata = []): bool
+    {
+        $timestamp = $this->timestamp();
+        $updated = false;
+
+        $this->updateSystemBrain(function (array &$brain) use ($enabled, $metadata, $timestamp, &$updated): void {
+            $brain['auth'] = $this->mergeAuthSection($brain['auth'] ?? [], $this->defaultAuthState());
+            $brain['api'] = $this->mergeApiSection($brain['api'] ?? [], $this->defaultApiState());
+
+            $active = $this->countActiveAuthKeys($brain['auth']['keys']);
+            if ($enabled && $active === 0) {
+                return;
+            }
+
+            if (($brain['api']['enabled'] ?? false) === $enabled) {
+                $updated = true;
+                return;
+            }
+
+            $brain['api']['enabled'] = $enabled;
+            $brain['api']['last_request_at'] = $brain['api']['last_request_at'] ?? null;
+
+            if ($enabled) {
+                $brain['api']['last_enabled_at'] = $timestamp;
+                $brain['auth']['bootstrap_active'] = false;
+            } else {
+                $brain['api']['last_disabled_at'] = $timestamp;
+            }
+
+            if (isset($metadata['actor'])) {
+                $brain['api']['last_actor'] = $metadata['actor'];
+            }
+
+            if (isset($metadata['reason'])) {
+                $brain['api']['last_reason'] = $metadata['reason'];
+            }
+
+            $updated = true;
+        });
+
+        if ($updated) {
+            $this->events->emit('api.state.changed', [
+                'enabled' => $enabled,
+                'timestamp' => $timestamp,
+                'reason' => $metadata['reason'] ?? null,
+            ]);
+        }
+
+        return $updated;
+    }
+
+    public function isApiEnabled(): bool
+    {
+        $brain = $this->loadSystemBrain();
+
+        return isset($brain['api']['enabled']) ? (bool) $brain['api']['enabled'] : false;
+    }
+
+    public function updateBootstrapKey(string $token, bool $active = true): void
+    {
+        $token = trim($token);
+        if ($token === '') {
+            throw new StorageException('Bootstrap key must not be empty.');
+        }
+
+        $timestamp = $this->timestamp();
+
+        $this->updateSystemBrain(function (array &$brain) use ($token, $active, $timestamp): void {
+            $brain['auth'] = $this->mergeAuthSection($brain['auth'] ?? [], $this->defaultAuthState());
+            $brain['auth']['bootstrap_key'] = $token;
+            $brain['auth']['bootstrap_active'] = $active;
+            $brain['auth']['last_rotation_at'] = $timestamp;
+        });
+
+        $this->events->emit('auth.bootstrap.updated', [
+            'active' => $active,
+        ]);
+    }
+
+    /**
      * Returns integrity telemetry for diagnostics.
      *
      * @return array<string, mixed>
@@ -492,7 +730,7 @@ final class BrainRepository
 
     public function touchAuthKey(string $hash, ?string $preview = null): void
     {
-        $hash = \strtolower(\trim($hash));
+        $hash = strtolower(trim($hash));
         if ($hash === '') {
             return;
         }
@@ -516,8 +754,8 @@ final class BrainRepository
                 }
 
                 $entryHash = isset($entry['hash']) && \is_string($entry['hash'])
-                    ? \strtolower($entry['hash'])
-                    : (\is_string($keyIdentifier) ? \strtolower($keyIdentifier) : null);
+                    ? strtolower($entry['hash'])
+                    : (\is_string($keyIdentifier) ? strtolower($keyIdentifier) : null);
 
                 if ($entryHash !== $hash) {
                     continue;
@@ -680,7 +918,7 @@ final class BrainRepository
             $written = 0;
 
             while ($written < $length) {
-                $chunk = @\fwrite($handle, \substr($contents, $written));
+                $chunk = @\fwrite($handle, substr($contents, $written));
                 if ($chunk === false) {
                     throw new StorageException(sprintf('Failed writing to temporary brain file "%s".', $tmpPath));
                 }
@@ -1034,9 +1272,9 @@ final class BrainRepository
 
         $hash = null;
         if (isset($entry['hash']) && \is_string($entry['hash']) && $entry['hash'] !== '') {
-            $hash = \strtolower($entry['hash']);
+            $hash = strtolower($entry['hash']);
         } elseif (\is_string($identifier) && $identifier !== '') {
-            $hash = \strtolower($identifier);
+            $hash = strtolower($identifier);
         } elseif (isset($entry['token']) && \is_string($entry['token']) && $entry['token'] !== '') {
             $hash = \hash('sha256', $entry['token']);
         }
@@ -1045,7 +1283,7 @@ final class BrainRepository
             return null;
         }
 
-        $status = isset($entry['status']) && \is_string($entry['status']) ? \strtolower($entry['status']) : 'active';
+        $status = isset($entry['status']) && \is_string($entry['status']) ? strtolower($entry['status']) : 'active';
         if (!\in_array($status, ['active', 'revoked'], true)) {
             $status = 'active';
         }
@@ -1144,9 +1382,9 @@ final class BrainRepository
 
     private function normalizeKey(string $value): string
     {
-        $value = \strtolower($value);
-        $value = \preg_replace('/[^a-z0-9\-_.]/', '-', $value) ?? $value;
-        $value = \trim($value, '-_.');
+        $value = strtolower($value);
+        $value = preg_replace('/[^a-z0-9\-_.]/', '-', $value) ?? $value;
+        $value = trim($value, '-_.');
 
         return $value === '' ? 'default' : $value;
     }
@@ -1195,7 +1433,7 @@ final class BrainRepository
         $brain = $this->loadSystemBrain();
         $original = $brain;
 
-        \call_user_func_array($mutator, [&$brain]);
+        $mutator($brain);
 
         if ($brain === $original) {
             return;
@@ -1208,37 +1446,68 @@ final class BrainRepository
 
     private function tokenPreview(string $token): string
     {
-        $trimmed = \trim($token);
+        $trimmed = trim($token);
         if ($trimmed === '') {
             return '';
         }
 
-        $visible = \substr($trimmed, 0, 4);
+        $visible = substr($trimmed, 0, 4);
 
-        return \sprintf('%s...', $visible);
+        return sprintf('%s...', $visible);
     }
 
     private function normalizeConfigKey(string $key): string
     {
-        $key = \trim($key);
+        $key = trim($key);
 
         if ($key === '') {
             throw new StorageException('Config key must not be empty.');
         }
 
-        $normalized = \preg_replace('/[^a-z0-9\-_.]/i', '_', $key) ?? $key;
-        $normalized = \trim(\strtolower($normalized), '-_.');
+        $normalized = preg_replace('/[^a-z0-9\-_.]/i', '_', $key) ?? $key;
+        $normalized = trim(strtolower($normalized), '-_.');
 
         if ($normalized === '') {
-            throw new StorageException(\sprintf('Config key "%s" contains no valid characters.', $key));
+            throw new StorageException(sprintf('Config key "%s" contains no valid characters.', $key));
         }
 
         return $normalized;
     }
 
+    private function normalizeTokenHash(string $identifier): string
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            throw new StorageException('Token identifier must not be empty.');
+        }
+
+        if (preg_match('/^[a-f0-9]{64}$/i', $identifier) === 1) {
+            return strtolower($identifier);
+        }
+
+        return strtolower(hash('sha256', $identifier));
+    }
+
     /**
-     * @return array<string, mixed>
+     * @param array<int|string, mixed> $keys
      */
+    private function countActiveAuthKeys(array $keys): int
+    {
+        $count = 0;
+        foreach ($keys as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            if (strtolower($entry['status'] ?? 'active') === 'active') {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+
     private function describeFile(string $path): array
     {
         $exists = \is_file($path);

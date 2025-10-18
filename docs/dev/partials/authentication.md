@@ -12,11 +12,13 @@
   - `auth`: `{ bootstrap_key, bootstrap_active, keys[], last_rotation_at }`  
   - `api`: `{ enabled, last_enabled_at, last_disabled_at, last_request_at }`
 - Tokens are stored as SHA-256 hashes. Metadata tracks `status` (`active|revoked`), creation timestamps, previews, and last usage.
+- `BrainRepository::registerAuthToken()`, `revokeAuthToken()`, `listAuthTokens()`, `setApiEnabled()`, and `updateBootstrapKey()` encapsulate all mutations (emit events, maintain telemetry).  
 - `BrainRepository::touchAuthKey()` updates usage metadata atomically after each successful REST call.
 
 ## REST Control
 - `api.enabled` must be toggled (via upcoming `api serve` / `api stop` commands) before REST accepts requests.  
-- Without an active non-bootstrap token or while the API flag is disabled, `api.php` returns structured error responses (HTTP 401/403/503).
+- Without an active non-bootstrap token or while the API flag is disabled, `api.php` returns structured error responses (HTTP 401/403/503).  
+- Revoking the last user token automatically disables the API and reactivates the bootstrap key for recovery.
 - Clients must supply `Authorization: Bearer <token>`; fallbacks (`X-API-Key`, `token`/`api_key` query/body parameters) exist for tooling convenience.
 
 ## Planned Lifecycle Commands

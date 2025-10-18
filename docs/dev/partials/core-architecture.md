@@ -23,7 +23,7 @@ system/
 │   ├── Container.php       # Lightweight service locator
 │   ├── CommandRegistry.php # Command management
 │   ├── CommandParser.php   # Statement parser
-│   ├── Modules/            # Module loader & descriptors
+│   ├── Modules/            # Module loader, descriptors, context
 │   ├── Logging/            # Logger factory
 │   ├── Security/AuthManager.php
 │   ├── EventBus.php        # Publish/subscribe hub
@@ -65,8 +65,10 @@ system/
 
 ## Module Loader
 - Scans `system/modules` + `user/modules`; loads `manifest.json` and `module.php`.  
-- Generates `ModuleDescriptor` (slug, scope, version, dependencies, autoload flag, initializer, issues).  
-- Exposes diagnostics and caches results; future work includes dependency resolution and init lifecycle.
+- Generates `ModuleDescriptor` (slug, scope, version, dependencies, autoload flag, capabilities, initializer, issues).  
+- `ModuleContext` hands initialisers capability-scoped access to core services (`CommandRegistry`, `EventBus`, `PathLocator`, `BrainRepository`, `AuthManager`, logger).  
+- Autoloaded modules are initialised during bootstrap; dependency chains are resolved recursively (missing/circular/failed deps block the module and emit diagnostics).  
+- Minimal sandbox: scope defaults + declared capabilities are whitelisted; missing privileges raise runtime exceptions when modules request restricted services.
 
 ## Diagnostics
 - `RuntimeState::diagnostics()` aggregates paths, command stats, parser metrics, module data, brain integrity, etc.  
@@ -79,13 +81,13 @@ system/
 - Auth state lives in `system.brain` (`auth` + `api` sections). Bootstrap token `admin` remains active until a user token is generated and activated.  
 - REST access is blocked while `api.enabled = false` or when only the bootstrap key exists. Valid requests must supply `Authorization: Bearer <token>` (or `X-API-Key` header).  
 - Successful REST calls update token usage metadata via `BrainRepository::touchAuthKey()` and surface telemetry through diagnostics for future log modules.
+- `BrainRepository` exposes helpers to register/revoke tokens, toggle API availability, and rotate the bootstrap key; modules should use these instead of writing raw JSON.
 
 ## Entry Points
 - `api.php` (REST/PHP) and `cli.php` (CLI) both call `setup()`, handle errors gracefully, and apply consistent response schema.  
 - REST requires `api_enabled = true` and non-bootstrap keys; CLI/PHP bypass keys but log actions.
 
-## Pending Work
-- Define module dependency resolution and sandboxing.  
-- Flesh out security partial (permissions model).  
+- Expand sandbox policies (filesystem/network caps, configurable scopes) and introduce richer dependency metadata (`provides`, `conflicts`).  
+- Flesh out security partial (permissions model).
 - Add unit/integration tests for parser, storage, auth workflows.  
 - Implement system log module for viewing/rotating Monolog outputs.

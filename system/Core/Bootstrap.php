@@ -145,7 +145,7 @@ final class Bootstrap
             /** @var LoggerInterface $logger */
             $logger = $container->get(LoggerInterface::class);
 
-            $loader = new ModuleLoader($paths, $commands, $events, $logger);
+            $loader = new ModuleLoader($paths, $container, $commands, $events, $logger);
             $loader->discover();
 
             return $loader;
@@ -176,5 +176,11 @@ final class Bootstrap
 
         // Ensure the configured active brain exists (lazy create).
         $brains->ensureActiveBrain();
+
+        if ($container->has(ModuleLoader::class)) {
+            /** @var ModuleLoader $loader */
+            $loader = $container->get(ModuleLoader::class);
+            $loader->initialise();
+        }
     }
 }

@@ -40,6 +40,11 @@ final class ModuleDescriptor
     private bool $autoload;
 
     /**
+     * @var array<int, string>
+     */
+    private array $capabilities;
+
+    /**
      * @var callable|null
      */
     private $initializer;
@@ -65,6 +70,7 @@ final class ModuleDescriptor
         array $definition,
         array $dependencies,
         bool $autoload,
+        array $capabilities,
         ?callable $initializer,
         array $issues = []
     ) {
@@ -77,6 +83,7 @@ final class ModuleDescriptor
         $this->definition = $definition;
         $this->dependencies = $dependencies;
         $this->autoload = $autoload;
+        $this->capabilities = $capabilities;
         $this->initializer = $initializer;
         $this->issues = $issues;
     }
@@ -136,6 +143,14 @@ final class ModuleDescriptor
     }
 
     /**
+     * @return array<int, string>
+     */
+    public function capabilities(): array
+    {
+        return $this->capabilities;
+    }
+
+    /**
      * @return callable|null
      */
     public function initializer(): ?callable
@@ -166,8 +181,8 @@ final class ModuleDescriptor
             'path' => $this->path,
             'dependencies' => $this->dependencies,
             'autoload' => $this->autoload,
+            'capabilities' => $this->capabilities,
             'issues' => $this->issues,
         ];
     }
 }
-
