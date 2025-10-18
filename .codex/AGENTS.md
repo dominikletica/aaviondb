@@ -12,7 +12,7 @@
 - **Modules & Agents** – Auto-discovered via `ModuleLoader`; system modules provide core agents (Core, Brain, Entity, Project, Export, Auth, API, UI). Custom modules extend behaviour through commands, parser hooks, and events.
 - **Unified Commands** – One syntax for CLI, REST, and PHP (`action project entity {json}`); `CommandRegistry` normalises responses and emits diagnostics events.
 - **Entry Points** – `api.php` (REST/PHP), `cli.php` (terminal), `system/core.php` (embedded). All wrap errors in structured responses and log exceptions.
-- **Authentication** – Bootstrap key `admin` (UI/CLI only) until the operator executes `auth grant` and `api serve`. REST requires non-bootstrap keys; auth actions are logged.
+- **Authentication** – `AuthManager` stores hashed tokens in `system.brain`. REST stays disabled until `api.enabled = true` and a non-bootstrap token exists; `admin` works only for CLI/UI recovery. Usage is logged for the upcoming log module.
 - **Logging & Diagnostics** – Monolog logger, module diagnostics, brain integrity report, planned system log module for viewing/rotating logs.
 
 ---

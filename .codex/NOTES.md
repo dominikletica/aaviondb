@@ -39,3 +39,10 @@
 - Added REST (`api.php`) and CLI (`cli.php`) entry points with defensive error handling and consistent JSON responses.
 - TODO: System-level log module (commands `log view`, `log rotate`, `log cleanup`, …) to expose/manipulate Monolog output.
 - TODO: Flesh out `docs/dev/partials/security.md` with sandboxing/permission model once defined.
+
+## 2025-02-15
+
+- Hardened façade bootstrap: `AavionDB::setup()` is now idempotent/lazy and runtime accessors auto-bootstrap. Added `AavionDB::auth()` accessor.
+- Introduced `Core\Security\AuthManager` and expanded `BrainRepository` schema (`auth`, `api` sections) with atomic token usage tracking.
+- `api.php` now enforces REST gating (API flag + bearer tokens); bootstrap token `admin` is blocked for REST.
+- Documentation refreshed (core architecture, entry points, authentication, security) to outline the new flow. Remaining TODOs: implement auth/api commands + log module.

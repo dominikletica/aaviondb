@@ -10,6 +10,7 @@ use AavionDB\Core\Exceptions\StorageException;
 use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Logging\LoggerFactory;
 use AavionDB\Core\Modules\ModuleLoader;
+use AavionDB\Core\Security\AuthManager;
 use AavionDB\Storage\BrainRepository;
 use Monolog\Level;
 use Psr\Log\LoggerInterface;
@@ -148,6 +149,15 @@ final class Bootstrap
             $loader->discover();
 
             return $loader;
+        });
+
+        $container->set(AuthManager::class, function (Container $container): AuthManager {
+            /** @var BrainRepository $brains */
+            $brains = $container->get(BrainRepository::class);
+            /** @var LoggerInterface $logger */
+            $logger = $container->get(LoggerInterface::class);
+
+            return new AuthManager($brains, $logger);
         });
     }
 

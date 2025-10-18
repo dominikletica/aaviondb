@@ -446,6 +446,7 @@ final class BrainRepository
         $systemPath = $this->paths->systemBrain();
         $activeSlug = $this->activeBrain();
         $activePath = $activeSlug !== null ? $this->paths->userBrain($activeSlug) : null;
+        $security = $this->authDiagnostics();
 
         return [
             'system_brain' => $this->describeFile($systemPath),
@@ -454,7 +455,123 @@ final class BrainRepository
                 'last_write' => $this->integrityState['last_write'] ?? null,
                 'last_failure' => $this->integrityState['last_failure'] ?? null,
             ],
-            'config' => [],
+            'security' => $security,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function systemAuthState(): array
+    {
+        $brain = $this->loadSystemBrain();
+
+        $auth = $this->mergeAuthSection($brain['auth'] ?? [], $this->defaultAuthState());
+        $api = $this->mergeApiSection($brain['api'] ?? [], $this->defaultApiState());
+
+        $active = 0;
+        foreach ($auth['keys'] as $entry) {
+            if (\is_array($entry) && ($entry['status'] ?? 'active') === 'active') {
+                $active++;
+            }
+        }
+
+        $authReturn = $auth;
+        $authReturn['active_keys'] = $active;
+        $authReturn['bootstrap_effective'] = $active === 0 || ($auth['bootstrap_active'] ?? false);
+
+        $this->systemBrain = $brain;
+        $this->systemBrain['auth'] = $auth;
+        $this->systemBrain['api'] = $api;
+
+        return [
+            'auth' => $authReturn,
+            'api' => $api,
+        ];
+    }
+
+    public function touchAuthKey(string $hash, ?string $preview = null): void
+    {
+        $hash = \strtolower(\trim($hash));
+        if ($hash === '') {
+            return;
+        }
+
+        $timestamp = $this->timestamp();
+
+        $this->updateSystemBrain(function (array &$brain) use ($hash, $preview, $timestamp): void {
+            if (!isset($brain['auth']) || !\is_array($brain['auth'])) {
+                $brain['auth'] = $this->defaultAuthState();
+            }
+
+            if (!isset($brain['auth']['keys']) || !\is_array($brain['auth']['keys'])) {
+                $brain['auth']['keys'] = [];
+            }
+
+            $updated = false;
+
+            foreach ($brain['auth']['keys'] as $keyIdentifier => &$entry) {
+                if (!\is_array($entry)) {
+                    continue;
+                }
+
+                $entryHash = isset($entry['hash']) && \is_string($entry['hash'])
+                    ? \strtolower($entry['hash'])
+                    : (\is_string($keyIdentifier) ? \strtolower($keyIdentifier) : null);
+
+                if ($entryHash !== $hash) {
+                    continue;
+                }
+
+                $entry['hash'] = $hash;
+                $entry['last_used_at'] = $timestamp;
+                if ($preview !== null) {
+                    $entry['token_preview'] = $preview;
+                }
+
+                $updated = true;
+                $brain['auth']['bootstrap_active'] = false;
+
+                if ($keyIdentifier !== $hash) {
+                    $brain['auth']['keys'][$hash] = $entry;
+                    unset($brain['auth']['keys'][$keyIdentifier]);
+                }
+
+                break;
+            }
+            unset($entry);
+
+            if (!$updated) {
+                return;
+            }
+
+            if (!isset($brain['api']) || !\is_array($brain['api'])) {
+                $brain['api'] = $this->defaultApiState();
+            }
+
+            $brain['api']['last_request_at'] = $timestamp;
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function authDiagnostics(): array
+    {
+        $state = $this->systemAuthState();
+        $auth = $state['auth'];
+        $api = $state['api'];
+
+        $total = isset($auth['keys']) && \is_array($auth['keys']) ? \count($auth['keys']) : 0;
+        $active = $auth['active_keys'] ?? 0;
+
+        return [
+            'api_enabled' => $api['enabled'] ?? false,
+            'bootstrap_active' => $auth['bootstrap_effective'] ?? true,
+            'total_keys' => $total,
+            'active_keys' => $active,
+            'last_request_at' => $api['last_request_at'] ?? null,
+            'last_rotation_at' => $auth['last_rotation_at'] ?? null,
         ];
     }
 
@@ -727,6 +844,8 @@ final class BrainRepository
             'projects' => [],
             'commits' => [],
             'config' => [],
+            'auth' => $this->defaultAuthState($overrides['auth'] ?? []),
+            'api' => $this->defaultApiState($overrides['api'] ?? []),
         ];
     }
 
@@ -747,6 +866,36 @@ final class BrainRepository
             'projects' => [],
             'commits' => [],
             'config' => [],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private function defaultAuthState(array $overrides = []): array
+    {
+        return [
+            'bootstrap_key' => $overrides['bootstrap_key'] ?? 'admin',
+            'bootstrap_active' => $overrides['bootstrap_active'] ?? true,
+            'keys' => [],
+            'last_rotation_at' => $overrides['last_rotation_at'] ?? null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private function defaultApiState(array $overrides = []): array
+    {
+        return [
+            'enabled' => $overrides['enabled'] ?? false,
+            'last_enabled_at' => $overrides['last_enabled_at'] ?? null,
+            'last_disabled_at' => $overrides['last_disabled_at'] ?? null,
+            'last_request_at' => $overrides['last_request_at'] ?? null,
         ];
     }
 
@@ -782,7 +931,138 @@ final class BrainRepository
             $merged['config'] = [];
         }
 
+        $merged['auth'] = $this->mergeAuthSection(
+            isset($merged['auth']) && \is_array($merged['auth']) ? $merged['auth'] : [],
+            $defaults['auth']
+        );
+
+        $merged['api'] = $this->mergeApiSection(
+            isset($merged['api']) && \is_array($merged['api']) ? $merged['api'] : [],
+            $defaults['api']
+        );
+
         return $merged;
+    }
+
+    /**
+     * @param array<string, mixed> $current
+     * @param array<string, mixed> $defaults
+     *
+     * @return array<string, mixed>
+     */
+    private function mergeAuthSection(array $current, array $defaults): array
+    {
+        $merged = $defaults;
+
+        $merged['bootstrap_key'] = isset($current['bootstrap_key']) && \is_string($current['bootstrap_key']) && $current['bootstrap_key'] !== ''
+            ? $current['bootstrap_key']
+            : $defaults['bootstrap_key'];
+
+        $merged['bootstrap_active'] = isset($current['bootstrap_active'])
+            ? (bool) $current['bootstrap_active']
+            : $defaults['bootstrap_active'];
+
+        $merged['last_rotation_at'] = isset($current['last_rotation_at']) && \is_string($current['last_rotation_at'])
+            ? $current['last_rotation_at']
+            : $defaults['last_rotation_at'];
+
+        $merged['keys'] = [];
+
+        if (isset($current['keys']) && \is_array($current['keys'])) {
+            foreach ($current['keys'] as $identifier => $entry) {
+                $normalized = $this->normalizeAuthKeyEntry($identifier, $entry);
+                if ($normalized !== null) {
+                    $merged['keys'][$normalized['hash']] = $normalized;
+                }
+            }
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param array<string, mixed> $current
+     * @param array<string, mixed> $defaults
+     *
+     * @return array<string, mixed>
+     */
+    private function mergeApiSection(array $current, array $defaults): array
+    {
+        $merged = $defaults;
+
+        $merged['enabled'] = isset($current['enabled'])
+            ? (bool) $current['enabled']
+            : $defaults['enabled'];
+
+        $merged['last_enabled_at'] = isset($current['last_enabled_at']) && \is_string($current['last_enabled_at'])
+            ? $current['last_enabled_at']
+            : $defaults['last_enabled_at'];
+
+        $merged['last_disabled_at'] = isset($current['last_disabled_at']) && \is_string($current['last_disabled_at'])
+            ? $current['last_disabled_at']
+            : $defaults['last_disabled_at'];
+
+        $merged['last_request_at'] = isset($current['last_request_at']) && \is_string($current['last_request_at'])
+            ? $current['last_request_at']
+            : $defaults['last_request_at'];
+
+        return $merged;
+    }
+
+    /**
+     * @param mixed $entry
+     *
+     * @return array<string, mixed>|null
+     */
+    private function normalizeAuthKeyEntry($identifier, $entry): ?array
+    {
+        if (\is_string($entry) && $entry !== '') {
+            $hash = \hash('sha256', $entry);
+
+            return [
+                'hash' => $hash,
+                'status' => 'active',
+                'created_at' => null,
+                'created_by' => null,
+                'token_preview' => $this->tokenPreview($entry),
+            ];
+        }
+
+        if (!\is_array($entry)) {
+            return null;
+        }
+
+        $hash = null;
+        if (isset($entry['hash']) && \is_string($entry['hash']) && $entry['hash'] !== '') {
+            $hash = \strtolower($entry['hash']);
+        } elseif (\is_string($identifier) && $identifier !== '') {
+            $hash = \strtolower($identifier);
+        } elseif (isset($entry['token']) && \is_string($entry['token']) && $entry['token'] !== '') {
+            $hash = \hash('sha256', $entry['token']);
+        }
+
+        if ($hash === null) {
+            return null;
+        }
+
+        $status = isset($entry['status']) && \is_string($entry['status']) ? \strtolower($entry['status']) : 'active';
+        if (!\in_array($status, ['active', 'revoked'], true)) {
+            $status = 'active';
+        }
+
+        $normalized = $entry;
+        $normalized['hash'] = $hash;
+        $normalized['status'] = $status;
+
+        if (!isset($normalized['token_preview']) || !\is_string($normalized['token_preview'])) {
+            $normalized['token_preview'] = isset($entry['token']) && \is_string($entry['token'])
+                ? $this->tokenPreview($entry['token'])
+                : ($normalized['token_preview'] ?? null);
+        }
+
+        unset($normalized['token']);
+
+        return $normalized;
     }
 
     private function determineActiveBrainSlug(): string
@@ -905,6 +1185,37 @@ final class BrainRepository
             'context' => $context,
             'timestamp' => $this->timestamp(),
         ];
+    }
+
+    /**
+     * @param callable(array<string, mixed>): void $mutator
+     */
+    private function updateSystemBrain(callable $mutator): void
+    {
+        $brain = $this->loadSystemBrain();
+        $original = $brain;
+
+        \call_user_func_array($mutator, [&$brain]);
+
+        if ($brain === $original) {
+            return;
+        }
+
+        $brain['meta']['updated_at'] = $this->timestamp();
+        $this->systemBrain = $brain;
+        $this->writeBrain($this->paths->systemBrain(), $brain);
+    }
+
+    private function tokenPreview(string $token): string
+    {
+        $trimmed = \trim($token);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        $visible = \substr($trimmed, 0, 4);
+
+        return \sprintf('%s...', $visible);
     }
 
     private function normalizeConfigKey(string $key): string

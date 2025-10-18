@@ -5,7 +5,7 @@
 
 ## System Brain
 - File: `system/storage/system.brain` (JSON).  
-- Always mounted; stores framework metadata, configuration (`config` map), auth keys, runtime flags (`api_enabled`), audit markers, and global commit lookup (`commits`).  
+- Always mounted; stores framework metadata, configuration (`config` map), authentication (`auth` section with hashed tokens) and REST controls (`api` section), audit markers, and global commit lookup (`commits`).  
 - Never exposed directly to user space; all interactions go through validated commands.
 
 ## User Brains
@@ -28,4 +28,5 @@
 - Paths and metadata for system/active brains (size, timestamps, slug).  
 - Last successful write (hash, attempts, timestamp).  
 - Last failure reason (if any).  
+- Security snapshot: API enabled flag, bootstrap status, token counters, last REST access timestamps.  
 This feeds `AavionDB::diagnose()` and future diagnostics dashboards.

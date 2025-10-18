@@ -118,7 +118,7 @@ php api.php setup
 or inside PHP:
 ```php
 include aaviondb/api.php;
-AavionDB::setup(); //can only run once
+AavionDB::setup(); //lazily bootstraps; repeated calls are ignored within the same request
 ```
 
 More commands will be documented as development progresses.
@@ -129,6 +129,7 @@ More commands will be documented as development progresses.
 - JSON payloads are accepted in the request body (`POST`, `PUT`, `PATCH`, `DELETE`).
 - Responses always follow the unified schema `{status, action, message, data, meta}`.
 - All errors are returned with HTTP 400/500; PHP exceptions are logged, not exposed.
+- REST remains disabled until the CLI command `api serve` toggles `api.enabled = true` and a non-bootstrap token exists.  Provide the token via `Authorization: Bearer <token>` (fallback: `X-API-Key` header or `token`/`api_key` parameter).  The bootstrap key `admin` never grants REST access.
 
 ### CLI
 

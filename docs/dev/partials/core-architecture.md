@@ -25,6 +25,7 @@ system/
 │   ├── CommandParser.php   # Statement parser
 │   ├── Modules/            # Module loader & descriptors
 │   ├── Logging/            # Logger factory
+│   ├── Security/AuthManager.php
 │   ├── EventBus.php        # Publish/subscribe hub
 │   ├── RuntimeState.php    # Diagnostics snapshot
 │   ├── Filesystem/PathLocator.php
@@ -37,9 +38,10 @@ system/
 
 ## Façade (`system/core.php`)
 - Public methods: `setup`, `run`, `command`, `registerParserHandler`, `diagnose`, `events`, `commands`, `parser`, `brains`, `logger`, `isBooted`.  
+- Public methods: `setup`, `run`, `command`, `registerParserHandler`, `diagnose`, `events`, `commands`, `parser`, `brains`, `logger`, `auth`, `isBooted`.  
 - `run`/`command` wrap handlers in `try/catch`, log failures, and always return the unified response array.  
 - `command` uses `CommandParser` to handle CLI-style statements (includes JSON payload detection).  
-- `setUp()` must remain idempotent to support CLI, REST, and embedded use cases.
+- `setup()` is idempotent and lazily invoked by all accessors, so consumers can rely on `AavionDB::run()` without an explicit bootstrap call.
 
 ## Canonical JSON & Hashing
 - `CanonicalJson::encode()` sorts associative keys, preserves indexed arrays, and throws `JsonException` on failure.  
@@ -71,6 +73,12 @@ system/
 - `BrainRepository::integrityReport()` and `ModuleLoader::diagnostics()` surface detailed insights for dashboards/tests.  
 - Command execution generates telemetry events; modules can consume them.  
 - TODO: integrate with planned log module / diagnostics UI.
+
+## Authentication Management
+- `Security/AuthManager` centralises bootstrap token handling, REST gating, and token audit logging.  
+- Auth state lives in `system.brain` (`auth` + `api` sections). Bootstrap token `admin` remains active until a user token is generated and activated.  
+- REST access is blocked while `api.enabled = false` or when only the bootstrap key exists. Valid requests must supply `Authorization: Bearer <token>` (or `X-API-Key` header).  
+- Successful REST calls update token usage metadata via `BrainRepository::touchAuthKey()` and surface telemetry through diagnostics for future log modules.
 
 ## Entry Points
 - `api.php` (REST/PHP) and `cli.php` (CLI) both call `setup()`, handle errors gracefully, and apply consistent response schema.  

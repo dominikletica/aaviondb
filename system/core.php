@@ -9,9 +9,9 @@ use AavionDB\Core\CommandParser;
 use AavionDB\Core\CommandRegistry;
 use AavionDB\Core\CommandResponse;
 use AavionDB\Core\EventBus;
-use AavionDB\Core\Exceptions\BootstrapException;
 use AavionDB\Core\Exceptions\CommandException;
 use AavionDB\Core\RuntimeState;
+use AavionDB\Core\Security\AuthManager;
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 
@@ -23,6 +23,11 @@ final class AavionDB
     private static ?RuntimeState $state = null;
 
     /**
+     * @var array<string, mixed>
+     */
+    private static array $bootstrapOptions = [];
+
+    /**
      * Bootstraps the framework. May only be invoked once per request lifecycle.
      *
      * @param array<string, mixed> $options
@@ -30,8 +35,10 @@ final class AavionDB
     public static function setup(array $options = []): void
     {
         if (self::$state !== null) {
-            throw new BootstrapException('AavionDB::setup() may only be called once per request lifecycle.');
+            return;
         }
+
+        self::$bootstrapOptions = $options;
 
         $bootstrap = new Bootstrap(\dirname(__DIR__));
         self::$state = $bootstrap->boot($options);
@@ -207,6 +214,19 @@ final class AavionDB
     }
 
     /**
+     * Returns the authentication manager.
+     */
+    public static function auth(): AuthManager
+    {
+        self::assertBooted();
+
+        /** @var AuthManager $auth */
+        $auth = self::$state->container()->get(AuthManager::class);
+
+        return $auth;
+    }
+
+    /**
      * Indicates whether the framework has completed bootstrap.
      */
     public static function isBooted(): bool
@@ -220,12 +240,13 @@ final class AavionDB
     public static function _resetForTests(): void
     {
         self::$state = null;
+        self::$bootstrapOptions = [];
     }
 
     private static function assertBooted(): void
     {
         if (self::$state === null) {
-            throw new BootstrapException('AavionDB::setup() must be called before invoking runtime methods.');
+            self::setup(self::$bootstrapOptions);
         }
     }
 

@@ -11,6 +11,7 @@
 
 ### Notes
 - Both entry points wrap calls in `try/catch` and never expose raw PHP stack traces.  
-- REST rejects requests while bootstrap key `admin` is active or `api_enabled = false`.  
+- REST rejects requests while `system.brain.api.enabled = false` or when only the bootstrap key exists.  
+- Clients must pass a token via `Authorization: Bearer <token>` (fallback: `X-API-Key`, `token`/`api_key` query parameters). Bootstrap token `admin` is blocked for REST.  
 - CLI/embedded modes bypass API keys but still log operations.  
 - Future consolidation: single entry script deciding mode by SAPI (`cli` vs web) to reduce duplication.

@@ -4,22 +4,28 @@
 > **Last updated:** 0.1.0-dev
 
 ## Bootstrap Key
-- Static key `admin` inserted on first boot (`is_bootstrap = true`).  
-- Valid for UI login and CLI/PHP recovery.  
-- REST remains disabled while `admin` is the only active key.
+- Static key `admin` is seeded on first boot and remains valid until a user-supplied token is created.  
+- CLI/PHP entry points may use the bootstrap key implicitly, but REST access is always blocked while it is the only active key.
 
-## Key Lifecycle
-- `auth grant`: Generates random token (32+ chars), marks `is_bootstrap = false`, enables REST via `api serve` requirement. Outputs handling instructions.  
-- `auth list`: Shows masked tokens, status (`active|revoked`), creation timestamps, bootstrap flag.  
-- `auth revoke {key}`: Marks token as revoked. If no non-bootstrap keys remain, force `api stop` and reactivate `admin`.  
-- `auth reset` (planned): Revokes all tokens, disables REST, re-enables `admin`.  
-- Keys stored under `system.brain.auth.keys`.
+## Token Storage & Format
+- Authentication state lives in `system.brain` under two sections:  
+  - `auth`: `{ bootstrap_key, bootstrap_active, keys[], last_rotation_at }`  
+  - `api`: `{ enabled, last_enabled_at, last_disabled_at, last_request_at }`
+- Tokens are stored as SHA-256 hashes. Metadata tracks `status` (`active|revoked`), creation timestamps, previews, and last usage.
+- `BrainRepository::touchAuthKey()` updates usage metadata atomically after each successful REST call.
 
 ## REST Control
-- `api serve`: Enables REST only if at least one non-bootstrap key is active.  
-- `api stop`: Disables REST; subsequent requests return HTTP 503 until re-enabled.
+- `api.enabled` must be toggled (via upcoming `api serve` / `api stop` commands) before REST accepts requests.  
+- Without an active non-bootstrap token or while the API flag is disabled, `api.php` returns structured error responses (HTTP 401/403/503).
+- Clients must supply `Authorization: Bearer <token>`; fallbacks (`X-API-Key`, `token`/`api_key` query/body parameters) exist for tooling convenience.
+
+## Planned Lifecycle Commands
+- `auth grant` will mint a new token (32+ chars), persist its hash, and return handling guidance.  
+- `auth list` will expose masked tokens, status flags, and audit timestamps.  
+- `auth revoke {key}` will deactivate a token; if no active keys remain, `api.enabled` is forced off and `bootstrap_active` resets.  
+- `auth reset` (planned) resets all tokens, disables REST, and re-enables the bootstrap key for recovery.
 
 ## Logging & Recovery
-- All auth events logged (e.g., `system/storage/logs/auth.log`).  
-- CLI/PHP require no key; use `auth grant` or `auth reset` if REST keys are lost.  
-- UI should prompt user to create a personal key immediately after bootstrap.
+- Auth events will be forwarded to the upcoming logging module (view/rotate/cleanup commands).  
+- If a token is lost, operators can use CLI (`auth grant`, `auth reset`) or inspect the system log once implemented.  
+- UI should prompt operators to replace the bootstrap key immediately after the first login.

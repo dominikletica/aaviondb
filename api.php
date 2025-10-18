@@ -90,6 +90,49 @@ if ($rawBody !== '') {
 } elseif ($request->request->count() > 0) {
     $parameters['payload'] = $request->request->all();
 }
+
+$apiToken = null;
+$authorization = $request->headers->get('Authorization');
+if (
+    \is_string($authorization)
+    && \preg_match('/Bearer\s+(.+)/i', $authorization, $matches)
+) {
+    $apiToken = $matches[1] ?? null;
+}
+
+if ($apiToken === null) {
+    $headerToken = $request->headers->get('X-API-Key');
+    if (\is_string($headerToken) && $headerToken !== '') {
+        $apiToken = $headerToken;
+    }
+}
+
+if ($apiToken === null) {
+    $queryToken = $request->query->get('token', $request->query->get('api_key'));
+    if (\is_string($queryToken) && $queryToken !== '') {
+        $apiToken = $queryToken;
+    }
+}
+
+if ($apiToken === null && $request->request->count() > 0) {
+    $bodyToken = $request->request->get('token', $request->request->get('api_key'));
+    if (\is_string($bodyToken) && $bodyToken !== '') {
+        $apiToken = $bodyToken;
+    }
+}
+
+$guard = AavionDB::auth()->guardRestAccess($apiToken, $action);
+if (($guard['allowed'] ?? false) !== true) {
+    $response = new JsonResponse($guard['payload'] ?? [], $guard['status_code'] ?? JsonResponse::HTTP_UNAUTHORIZED);
+    $response->headers->set('Access-Control-Allow-Origin', '*');
+    $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+
+    $response->send();
+
+    return;
+}
+
 try {
     $result = AavionDB::run($action, $parameters);
 } catch (\Throwable $exception) {
