@@ -11,6 +11,8 @@ use AavionDB\Core\Exceptions\CommandException;
  */
 final class CommandRegistry
 {
+    private ?CommandParser $parser = null;
+
     /**
      * @var array<string, array{name: string, handler: callable, meta: array<string, mixed>}>
      */
@@ -34,6 +36,10 @@ final class CommandRegistry
             'handler' => $handler,
             'meta' => $meta,
         ];
+
+        if (isset($meta['parser'])) {
+            $this->registerParserMetadata($normalized, $meta['parser']);
+        }
     }
 
     /**
@@ -75,9 +81,94 @@ final class CommandRegistry
         return $list;
     }
 
+    public function setParser(CommandParser $parser): void
+    {
+        $this->parser = $parser;
+    }
+
+    public function parser(): ?CommandParser
+    {
+        return $this->parser;
+    }
+
+    /**
+     * @param callable(ParserContext): void $handler
+     */
+    public function registerParserHandler(?string $action, callable $handler, int $priority = 0): void
+    {
+        if ($this->parser === null) {
+            throw new CommandException('No command parser available to register a handler.');
+        }
+
+        $this->parser->registerHandler($action, $handler, $priority);
+    }
+
     private function normalizeName(string $name): string
     {
         return \strtolower(\trim($name));
     }
-}
 
+    /**
+     * @param mixed $metadata
+     */
+    private function registerParserMetadata(string $normalizedAction, $metadata): void
+    {
+        if ($this->parser === null) {
+            throw new CommandException(sprintf(
+                'Command "%s" declared parser metadata, but no parser is available.',
+                $normalizedAction
+            ));
+        }
+
+        $handlers = $this->normalizeParserMetadata($metadata);
+
+        foreach ($handlers as $handlerDefinition) {
+            $action = $handlerDefinition['action'] ?? $normalizedAction;
+            $callable = $handlerDefinition['handler'];
+            $priority = $handlerDefinition['priority'] ?? 0;
+            $this->parser->registerHandler($action, $callable, (int) $priority);
+        }
+    }
+
+    /**
+     * @param mixed $metadata
+     *
+     * @return array<int, array{handler: callable, action?: string, priority?: int}>
+     */
+    private function normalizeParserMetadata($metadata): array
+    {
+        if (\is_callable($metadata)) {
+            return [
+                [
+                    'handler' => $metadata,
+                ],
+            ];
+        }
+
+        if (\is_array($metadata) && isset($metadata['handler']) && \is_callable($metadata['handler'])) {
+            return [$metadata];
+        }
+
+        if (!\is_array($metadata)) {
+            throw new CommandException('Parser metadata must be callable or an array definition.');
+        }
+
+        $handlers = [];
+
+        foreach ($metadata as $entry) {
+            if (\is_callable($entry)) {
+                $handlers[] = ['handler' => $entry];
+                continue;
+            }
+
+            if (\is_array($entry) && isset($entry['handler']) && \is_callable($entry['handler'])) {
+                $handlers[] = $entry;
+                continue;
+            }
+
+            throw new CommandException('Invalid parser handler definition encountered.');
+        }
+
+        return $handlers;
+    }
+}

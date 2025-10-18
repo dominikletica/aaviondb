@@ -173,8 +173,30 @@ The structure intentionally keeps associative maps at every layer to retain dete
 - Validate required keys; supply defaults on new files.
 - Provide CRUD helpers: `listProjects()`, `saveEntity()`, `listVersions()`, etc.
 - Persist changes via canonical encoding to ensure deterministic bytes & hashes.
+- Emit storage events on significant operations (project/entity creation, version commits).
+- Maintain a global commit lookup (`commits`) to resolve hashes → project/entity/version.
 
 Any write must be atomic (write to temp file, `rename()`).
+
+---
+
+### 5.3 Entity Version Lifecycle
+
+1. `saveEntity(project, entity, payload, meta)`  
+   - Canonicalises payload → SHA-256 hash.  
+   - Calculates next version number (`versions` max + 1).  
+   - Produces commit metadata (`project`, `entity`, `version`, `hash`, `timestamp`, `meta`) and hashes it deterministically.  
+   - Marks previous active version as `inactive`, persists new record, updates project timestamps, and stores commit lookup.  
+   - Emits `brain.entity.saved`.
+
+2. `getEntityVersion(project, entity, ref = null)`  
+   - Returns active version when `ref` is `null`.  
+   - Accepts direct version identifiers or commit hashes (resolved via global lookup).
+
+3. `listProjects()` / `listEntities(project)`  
+   - Provide lightweight metadata maps for discovery without exposing payloads.
+
+This lifecycle ensures deterministic persistence while keeping read operations inexpensive.
 
 ---
 
@@ -186,6 +208,7 @@ Any write must be atomic (write to temp file, `rename()`).
 - `dispatch(string $name, array $params = []): CommandResponse`
 - Names are stored in lowercase; aliases permitted via metadata.
 - `CommandResponse` is a value object (status, message, payload, meta).
+- Parser integration: `CommandRegistry::setParser()` is invoked during bootstrap, enabling modules to call `registerParserHandler()` or provide `['parser' => callable|array]` metadata when registering commands.
 
 Initial built-in commands (to be supplied by system modules later) will follow the same interface.
 
@@ -236,6 +259,8 @@ Implementation class: `Core\CommandParser`.
 - Modules register handlers during their initialisation (e.g. to interpret `entity:version` syntax).
 - The facade `AavionDB::command()` uses the parser and forwards structured parameters to `run()`.
 - Parser diagnostics expose registered handler counts to aid debugging.
+- `BrainRepository` will later expose convenience helpers for registering parser extensions tied to entity syntax (e.g. `entity:version`), keeping parsing and storage extensions aligned.
+- Modules may register handlers directly through `CommandRegistry::registerParserHandler()` or by supplying `['parser' => ...]` metadata during `register()`.
 
 ---
 
@@ -248,6 +273,7 @@ Implementation class: `Core\CommandParser`.
 - Active brains (system + user).
 - Command registry statistics (#commands, duplicates, aliases).
 - Storage integrity summary (hash verification, file timestamps).
+- Parser handler overview (global + per-action counts) for debugging command extensions.
 
 Diagnostics pull data exclusively from public service APIs to mirror the unified response model.
 

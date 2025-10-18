@@ -81,7 +81,15 @@ final class Bootstrap
             return new CommandParser($events);
         });
 
-        $container->set(CommandRegistry::class, static fn (): CommandRegistry => new CommandRegistry());
+        $container->set(CommandRegistry::class, function (Container $container): CommandRegistry {
+            $registry = new CommandRegistry();
+
+            if ($container->has(CommandParser::class)) {
+                $registry->setParser($container->get(CommandParser::class));
+            }
+
+            return $registry;
+        });
 
         $container->set(BrainRepository::class, function (Container $container) use ($options): BrainRepository {
             /** @var PathLocator $paths */

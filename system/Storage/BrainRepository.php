@@ -25,12 +25,16 @@ final class BrainRepository
      */
     private array $options;
 
-    /**
-     * @var array<string, mixed>|null
-     */
     private ?array $systemBrain = null;
 
     private ?string $activeBrainSlug = null;
+
+    /**
+     * @var array<string, mixed>|null
+     */
+    private ?array $activeBrainData = null;
+
+    private ?string $activeBrainPath = null;
 
     /**
      * @param array<string, mixed> $options
@@ -95,6 +99,8 @@ final class BrainRepository
         }
 
         $this->activeBrainSlug = $slug;
+        $this->activeBrainPath = $path;
+        $this->activeBrainData = null;
 
         return $slug;
     }
@@ -105,6 +111,226 @@ final class BrainRepository
     public function activeBrain(): ?string
     {
         return $this->activeBrainSlug ?? $this->systemBrain['state']['active_brain'] ?? null;
+    }
+
+    /**
+     * Returns metadata of all projects stored in the active brain.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function listProjects(): array
+    {
+        $brain = $this->loadActiveBrain();
+        $projects = $brain['projects'] ?? [];
+        $result = [];
+
+        foreach ($projects as $slug => $project) {
+            if (!\is_array($project)) {
+                continue;
+            }
+
+            $result[$slug] = [
+                'slug' => $slug,
+                'title' => $project['title'] ?? null,
+                'created_at' => $project['created_at'] ?? null,
+                'updated_at' => $project['updated_at'] ?? null,
+                'entity_count' => isset($project['entities']) && \is_array($project['entities'])
+                    ? \count($project['entities'])
+                    : 0,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns metadata for all entities within a project.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function listEntities(string $projectSlug): array
+    {
+        $project = $this->getProject($projectSlug);
+        $entities = $project['entities'] ?? [];
+        $result = [];
+
+        foreach ($entities as $entitySlug => $entity) {
+            if (!\is_array($entity) || !isset($entity['versions']) || !\is_array($entity['versions'])) {
+                continue;
+            }
+
+            $result[$entitySlug] = [
+                'slug' => $entitySlug,
+                'active_version' => $entity['active_version'] ?? null,
+                'version_count' => \count($entity['versions']),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Persists an entity payload as new version inside the active brain.
+     *
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $meta
+     *
+     * @return array<string, mixed> Commit metadata
+     */
+    public function saveEntity(string $projectSlug, string $entitySlug, array $payload, array $meta = []): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $slugEntity = $this->normalizeKey($entitySlug);
+
+        $brain = $this->loadActiveBrain();
+        $timestamp = $this->timestamp();
+
+        if (!isset($brain['projects'][$slugProject])) {
+            $brain['projects'][$slugProject] = $this->defaultProject($slugProject, $timestamp);
+        }
+
+        $project = &$brain['projects'][$slugProject];
+
+        if (!isset($project['entities']) || !\is_array($project['entities'])) {
+            $project['entities'] = [];
+        }
+
+        if (!isset($project['entities'][$slugEntity]) || !\is_array($project['entities'][$slugEntity])) {
+            $project['entities'][$slugEntity] = [
+                'slug' => $slugEntity,
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+                'active_version' => null,
+                'versions' => [],
+            ];
+        }
+
+        $entity = &$project['entities'][$slugEntity];
+        $currentVersion = $this->determineNextVersion($entity['versions'] ?? []);
+        $hash = CanonicalJson::hash($payload);
+
+        $commitData = [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => $currentVersion,
+            'hash' => $hash,
+            'payload' => $payload,
+            'meta' => $meta,
+            'timestamp' => $timestamp,
+        ];
+
+        $commitHash = CanonicalJson::hash($commitData);
+
+        $record = [
+            'version' => $currentVersion,
+            'hash' => $hash,
+            'commit' => $commitHash,
+            'committed_at' => $timestamp,
+            'status' => 'active',
+            'payload' => $payload,
+            'meta' => $meta,
+        ];
+
+        if (isset($entity['active_version'], $entity['versions'][$entity['active_version']])) {
+            $entity['versions'][$entity['active_version']]['status'] = 'inactive';
+        }
+
+        $entity['versions'][(string) $currentVersion] = $record;
+        $entity['active_version'] = (string) $currentVersion;
+        $entity['updated_at'] = $timestamp;
+
+        $project['updated_at'] = $timestamp;
+
+        if (!isset($brain['commits']) || !\is_array($brain['commits'])) {
+            $brain['commits'] = [];
+        }
+
+        $brain['commits'][$commitHash] = [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => (string) $currentVersion,
+            'hash' => $hash,
+            'timestamp' => $timestamp,
+        ];
+
+        $brain['meta']['updated_at'] = $timestamp;
+        $this->activeBrainData = $brain;
+
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.saved', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => (string) $currentVersion,
+            'commit' => $commitHash,
+        ]);
+
+        return [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => (string) $currentVersion,
+            'hash' => $hash,
+            'commit' => $commitHash,
+            'timestamp' => $timestamp,
+        ];
+    }
+
+    /**
+     * Returns a specific entity version or the active version if no reference is supplied.
+     *
+     * @return array<string, mixed>
+     */
+    public function getEntityVersion(string $projectSlug, string $entitySlug, ?string $reference = null): array
+    {
+        $project = $this->getProject($projectSlug);
+        $entity = $project['entities'][$this->normalizeKey($entitySlug)] ?? null;
+
+        if (!\is_array($entity) || !isset($entity['versions'])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $versions = $entity['versions'];
+
+        if ($reference === null) {
+            $reference = $entity['active_version'] ?? null;
+            if ($reference === null) {
+                throw new StorageException('Entity does not have an active version.');
+            }
+        }
+
+        // Allow lookup by commit hash.
+        if (!isset($versions[$reference])) {
+            $brain = $this->loadActiveBrain();
+            if (isset($brain['commits'][$reference])) {
+                $ref = $brain['commits'][$reference]['version'] ?? null;
+                if ($ref !== null && isset($versions[$ref])) {
+                    $reference = $ref;
+                }
+            }
+        }
+
+        if (!isset($versions[$reference])) {
+            throw new StorageException(sprintf('Unknown entity reference "%s".', $reference));
+        }
+
+        return $versions[$reference];
+    }
+
+    /**
+     * Returns a project array or throws.
+     *
+     * @return array<string, mixed>
+     */
+    public function getProject(string $projectSlug): array
+    {
+        $brain = $this->loadActiveBrain();
+        $slug = $this->normalizeKey($projectSlug);
+
+        if (!isset($brain['projects'][$slug]) || !\is_array($brain['projects'][$slug])) {
+            throw new StorageException(sprintf('Project "%s" not found in active brain.', $projectSlug));
+        }
+
+        return $brain['projects'][$slug];
     }
 
     /**
@@ -168,8 +394,8 @@ final class BrainRepository
             'state' => [
                 'active_brain' => $overrides['state']['active_brain'] ?? $this->options['active_brain'] ?? 'default',
             ],
-            'projects' => new \stdClass(),
-            'commits' => new \stdClass(),
+            'projects' => [],
+            'commits' => [],
         ];
     }
 
@@ -187,8 +413,8 @@ final class BrainRepository
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
             ],
-            'projects' => new \stdClass(),
-            'commits' => new \stdClass(),
+            'projects' => [],
+            'commits' => [],
         ];
     }
 
@@ -232,6 +458,71 @@ final class BrainRepository
         $basename = \basename($path, '.brain');
 
         return $basename !== '' ? $basename : 'default';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadActiveBrain(): array
+    {
+        if ($this->activeBrainSlug === null) {
+            $this->ensureActiveBrain();
+        }
+
+        if ($this->activeBrainData === null) {
+            $this->activeBrainData = $this->readBrain($this->activeBrainPath ?? $this->paths->userBrain($this->activeBrainSlug ?? 'default'));
+        }
+
+        return $this->activeBrainData;
+    }
+
+    private function persistActiveBrain(): void
+    {
+        if ($this->activeBrainData === null || $this->activeBrainPath === null) {
+            return;
+        }
+
+        $this->writeBrain($this->activeBrainPath, $this->activeBrainData);
+    }
+
+    /**
+     * @param array<string, mixed> $versions
+     */
+    private function determineNextVersion(array $versions): int
+    {
+        if ($versions === []) {
+            return 1;
+        }
+
+        $numeric = [];
+        foreach ($versions as $key => $_) {
+            $numeric[] = (int) $key;
+        }
+
+        return \max($numeric) + 1;
+    }
+
+    private function normalizeKey(string $value): string
+    {
+        $value = \strtolower($value);
+        $value = \preg_replace('/[^a-z0-9\-_.]/', '-', $value) ?? $value;
+        $value = \trim($value, '-_.');
+
+        return $value === '' ? 'default' : $value;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function defaultProject(string $slug, string $timestamp): array
+    {
+        return [
+            'slug' => $slug,
+            'title' => $slug,
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+            'entities' => [],
+        ];
     }
 
     private function timestamp(): string

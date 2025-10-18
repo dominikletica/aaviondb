@@ -27,3 +27,5 @@
 - Created filesystem scaffolding (`PathLocator`) and initial storage layer (`BrainRepository`) including automatic system/user brain creation with canonical JSON persistence.
 - Updated developer manual to link to the new core architecture blueprint.
 - Added extensible command parsing pipeline (CommandParser + ParserContext), routed facade command execution through structured parsing, and exposed parser diagnostics.
+- Expanded `BrainRepository` with project/entity CRUD, deterministic version/commit handling, and shared commit lookup map; docs updated with the new lifecycle description.
+- Command registry now links to the parser service, allowing modules to register handlers via metadata or API helpers.
