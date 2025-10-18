@@ -46,9 +46,8 @@ It handles initialization, routing, storage, and API dispatch.
 
 | File | Purpose |
 |------|----------|
-| `/api.php` | REST and includable PHP entry point |
+| `/api.php` | Multi-interface API entry point |
 | `/index.php` | UI entry point |
-| `/cli.php` | CLI interface (planned) |
 | `/system/storage/system.brain` | Persistent framework data store |
 | `/system/core.php` | Framework root class |
 
