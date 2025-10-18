@@ -354,7 +354,7 @@ final class BrainRepository
     /**
      * @param array<string, mixed> $data
      */
-    private function writeBrain(string $path, array $data): void
+    private function writeBrain(string $path, array $data, int $attempt = 0): void
     {
         $directory = \dirname($path);
         if (!\is_dir($directory) && !@\mkdir($directory, 0775, true) && !\is_dir($directory)) {
@@ -362,16 +362,160 @@ final class BrainRepository
         }
 
         $json = CanonicalJson::encode($data);
-        $tmpPath = $path . '.tmp';
+        $expectedHash = \hash('sha256', $json);
+        $tmpPath = $this->writeAtomicTemporary($directory, \basename($path), $json);
 
-        if (@\file_put_contents($tmpPath, $json) === false) {
-            throw new StorageException(sprintf('Failed to write temporary brain file "%s".', $tmpPath));
+        if (!@\chmod($tmpPath, 0664)) {
+            // Non-fatal; permissions may vary depending on umask.
         }
 
         if (!@\rename($tmpPath, $path)) {
             @\unlink($tmpPath);
             throw new StorageException(sprintf('Unable to replace brain file "%s".', $path));
         }
+
+        if (!$this->verifyBrainIntegrity($path, $json, $expectedHash)) {
+            $this->events->emit('brain.write.retry', [
+                'path' => $path,
+                'attempt' => $attempt + 1,
+                'expected_hash' => $expectedHash,
+            ]);
+
+            if ($attempt >= 1) {
+                throw new StorageException(sprintf(
+                    'Integrity verification failed for "%s" after %d attempts.',
+                    $path,
+                    $attempt + 1
+                ));
+            }
+
+            $this->writeBrain($path, $data, $attempt + 1);
+        } else {
+            $this->events->emit('brain.write.completed', [
+                'path' => $path,
+                'hash' => $expectedHash,
+            ]);
+        }
+    }
+
+    /**
+     * @throws StorageException
+     */
+    private function writeAtomicTemporary(string $directory, string $baseName, string $contents): string
+    {
+        $tmpPath = \tempnam($directory, $baseName . '.tmp-');
+        if ($tmpPath === false) {
+            throw new StorageException(sprintf('Unable to create temporary file in "%s".', $directory));
+        }
+
+        $handle = @\fopen($tmpPath, 'wb');
+        if ($handle === false) {
+            @\unlink($tmpPath);
+            throw new StorageException(sprintf('Unable to open temporary brain file "%s" for writing.', $tmpPath));
+        }
+
+        try {
+            if (!@\flock($handle, LOCK_EX)) {
+                throw new StorageException(sprintf('Unable to obtain exclusive lock on "%s".', $tmpPath));
+            }
+
+            $length = \strlen($contents);
+            $written = 0;
+
+            while ($written < $length) {
+                $chunk = @\fwrite($handle, \substr($contents, $written));
+                if ($chunk === false) {
+                    throw new StorageException(sprintf('Failed writing to temporary brain file "%s".', $tmpPath));
+                }
+
+                $written += $chunk;
+            }
+
+            if (!@\fflush($handle)) {
+                throw new StorageException(sprintf('Unable to flush temporary brain file "%s".', $tmpPath));
+            }
+
+            @\flock($handle, LOCK_UN);
+        } catch (\Throwable $exception) {
+            @\flock($handle, LOCK_UN);
+            @\fclose($handle);
+            @\unlink($tmpPath);
+
+            throw $exception;
+        }
+
+        if (!@\fclose($handle)) {
+            @\unlink($tmpPath);
+            throw new StorageException(sprintf('Unable to close temporary brain file "%s".', $tmpPath));
+        }
+
+        return $tmpPath;
+    }
+
+    private function verifyBrainIntegrity(string $path, string $expectedJson, string $expectedHash): bool
+    {
+        \clearstatcache(true, $path);
+
+        $content = @\file_get_contents($path);
+        if ($content === false) {
+            $this->events->emit('brain.write.integrity_failed', [
+                'path' => $path,
+                'reason' => 'read_failed',
+            ]);
+
+            return false;
+        }
+
+        $actualHash = \hash('sha256', $content);
+        if ($actualHash !== $expectedHash) {
+            $this->events->emit('brain.write.integrity_failed', [
+                'path' => $path,
+                'reason' => 'hash_mismatch',
+                'expected_hash' => $expectedHash,
+                'actual_hash' => $actualHash,
+            ]);
+
+            return false;
+        }
+
+        if ($content !== $expectedJson) {
+            $this->events->emit('brain.write.integrity_failed', [
+                'path' => $path,
+                'reason' => 'content_mismatch',
+                'expected_hash' => $expectedHash,
+                'actual_hash' => $actualHash,
+            ]);
+
+            return false;
+        }
+
+        try {
+            $decoded = \json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+            $reencoded = CanonicalJson::encode($decoded);
+        } catch (\JsonException $exception) {
+            $this->events->emit('brain.write.integrity_failed', [
+                'path' => $path,
+                'reason' => 'json_decode_error',
+                'message' => $exception->getMessage(),
+                'expected_hash' => $expectedHash,
+                'actual_hash' => $actualHash,
+            ]);
+
+            return false;
+        }
+
+        if ($reencoded !== $expectedJson) {
+            $this->events->emit('brain.write.integrity_failed', [
+                'path' => $path,
+                'reason' => 'canonical_mismatch',
+                'expected_hash' => $expectedHash,
+                'actual_hash' => $actualHash,
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

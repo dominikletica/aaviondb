@@ -200,6 +200,18 @@ This lifecycle ensures deterministic persistence while keeping read operations i
 
 ---
 
+### 5.4 Atomic Persistence Guarantees
+
+- Brain files are written via temporary files located in the same directory, using exclusive locks and a single atomic `rename`.
+- After the swap, the file is re-read immediately; the SHA-256 hash and canonical JSON bytes must match the pre-write payload.
+- Any mismatch triggers a retry (once) and emits diagnostic events:
+  - `brain.write.retry`
+  - `brain.write.integrity_failed`
+  - `brain.write.completed` (on success, includes final hash and attempt count)
+- Persistent failure raises a `StorageException`, preventing partially written data from being considered valid.
+
+---
+
 ## 6. Command Registry
 
 `Core\CommandRegistry` manages all callable commands:
