@@ -3,7 +3,7 @@
 > Maintainer: Codex (GPT-5)  
 > Purpose: Track implementation decisions, open questions, and follow-up tasks during core development.
 
-## 2025-10-18
+## 2025-10-17
 
 - **Canonical JSON & Hashing**  
   - Sort associative keys recursively; keep numeric arrays ordered.  
