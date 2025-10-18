@@ -33,7 +33,7 @@
 ---
 
 ## 🧠 Core Architecture
-- [`docs/dev/core-architecture.md`](./core-architecture.md) *(DRAFT)* – runtime blueprint, service layout.
+- [`docs/dev/core-architecture.md`](./partials/core-architecture.md) *(DRAFT)* – runtime blueprint, service layout.
 
 ## 🗂️ File Structure
 - [`docs/dev/partials/file-structure.md`](./partials/file-structure.md) *(DRAFT)*
