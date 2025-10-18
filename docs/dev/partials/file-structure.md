@@ -10,8 +10,8 @@ aavionDB/
 │   ├── Core/                    # Core services (bootstrap, registry, events, logging, modules…)
 │   ├── Storage/                 # Brain persistence layer
 │   ├── modules/                 # System modules (auto-discovered)
-│   ├── assets/                  # Base UI assets
-│   ├── templates/               # Base UI templates
+│   ├── assets/                  # Shared assets (optional, consumed by external UIs)
+│   ├── templates/               # Shared templates/snippets (optional)
 │   └── storage/
 │       ├── system.brain         # Internal system brain (JSON)
 │       └── logs/                # Monolog output (aaviondb.log, auth.log,…)
@@ -23,7 +23,6 @@ aavionDB/
 ├── docs/                        # Documentation (`README.md`, manual, specs)
 ├── api.php                      # REST/PHP entry point
 ├── cli.php                      # CLI entry point
-├── index.php                    # Web UI (planned)
 └── README.md                    # Project overview
 ```
 

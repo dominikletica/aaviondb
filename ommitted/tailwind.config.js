@@ -6,8 +6,7 @@ module.exports = {
   content: [
     './system/**/*.php',
     './user/**/*.php',
-    './assets/**/*.{html,js,ts}',
-    './index.php'
+    './assets/**/*.{html,js,ts}'
   ],
 
   theme: {

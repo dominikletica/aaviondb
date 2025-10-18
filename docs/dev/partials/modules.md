@@ -130,7 +130,7 @@ return [
 - **`BrainAgent` (`brain`)** – Brain lifecycle management
   - List/init/switch brains
   - Handle backups and integrity reports
-  - Expose brain config helpers
+  - Expose brain config helpers and maintenance tooling (validation/repair)
 - **`ProjectAgent` (`project`)** – Project indexing and metadata
   - Create/list/remove projects
   - Manage project-level metadata
@@ -138,22 +138,22 @@ return [
 - **`EntityAgent` (`entity`)** – Entity versioning workflow
   - CRUD for entities and versions
   - Handle canonical hashing
-  - Restore/delete operations
+  - Restore/delete operations and syntax migration support (`@version`)
 - **`ExportAgent` (`export`)** – Data exports and snapshots
-  - Command syntax (per README): `export {project} [entity[,entity]]` with optional `:version` / `:hash` selectors
+  - Command syntax (per README): `export {project} [entity[,entity]]` with optional `@version` / `#hash` selectors
   - Generate JSON slices for whole brains, projects, or entity subsets
-  - Manage export presets and destination handling
+  - Manage export presets, schema-aware profiles, and LLM-ready output
 - **`AuthAgent` (`auth`)** – API token lifecycle
   - Commands: auth grant/list/revoke/reset
   - Bootstrap key rotation
-  - Audit logging integration
+  - Audit logging integration and groundwork for scoped keys/roles
 - **`ApiAgent` (`api`)** – REST endpoint management
   - api serve/stop/reset commands
   - Expose REST diagnostics
-  - Bridge to AuthManager
+  - Bridge to AuthManager and future batched/async actions
 - **`UiAgent` (`ui`)** – Console / web UI integration
-  - Serve interactive console
-  - Register UI-specific commands
+  - Provide integration hooks for the external **AavionStudio** project
+  - Maintain minimal diagnostics/console glue only where necessary
   - Link to REST/API for optional remote execution
 - **`LogAgent` (`log`)** – Operational log access
   - Commands: log view/rotate/cleanup
@@ -162,7 +162,7 @@ return [
 - **`EventsAgent` (`events`)** – Event bus inspection
   - List listeners & emitted events
   - Subscribe modules for instrumentation
-  - Diagnostics for module telemetry
+  - Diagnostics for module telemetry and live feed endpoints
 - **`SchedulerAgent` (`scheduler`)** – (Future) scheduled job orchestration
   - Define scheduled command hooks
   - Integrate with cron/queue backends

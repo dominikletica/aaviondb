@@ -4,20 +4,14 @@
 > **Last updated:** 0.1.0-dev
 
 ## Planned Features
-- Interactive console mirroring CLI commands.  
-- Tree view for projects/entities/versions.  
-- Markdown rendering and documentation panels.  
-- Live event/log viewer (hooked into Monolog + event bus).  
-- Light/Dark themes, responsive layout.
+- External **AavionStudio** app providing interactive console, dashboards, and diff views.  
+- Optional diagnostics-only console inside AavionDB for minimal troubleshooting.
 
 ## Integration Notes
-- Assets under `system/assets/`; templates under `system/templates/`.  
-- UI should authenticate using bootstrap key initially, then prompt the user to create personal keys.  
-- Configuration option to choose execution mode per action:
-  - Internal PHP (`AavionDB::command()`) for low-latency operations.  
-  - REST request (with stored token) for debugging API flows.
+- Shared assets/templates (if any) live under `system/assets/` and are consumed by external front-ends.  
+- External UI authenticates via REST (Bearer token); bootstrap flows remain CLI-only.  
+- The upcoming UiAgent will expose hooks so Studio can trigger commands, subscribe to events, and display diagnostics.
 
 ## Future Enhancements
-- Guided onboarding (after bootstrap) explaining `auth grant`, `api serve`, `api stop`.  
-- Visual diffing for entity versions.  
-- Plugin support for custom dashboards from user modules.
+- Live event/log streaming via WebSocket bridge.  
+- Schema-aware editors and guided onboarding once AavionStudio is implemented.

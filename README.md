@@ -16,7 +16,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 - **Lightweight and headless** – No persistent server process required.
 - **Shared-host ready** – Only PHP ≥ 8.1 required, no Node.js or database servers needed.
 - **Extensible architecture** – Custom modules and plugins can add new functionality.
-- **Web-based UI** – Interactive console and graphical data view (planned).
+- **UI integration hooks** – AavionDB exposes interfaces for the separate **AavionStudio** front-end (planned).
 - **Export functionality** – Create JSON-based slices for integration with tools like ChatGPT or other LLMs.  
   These parser-friendly files act as contextual datasets for AI tools that can’t natively store large amounts of structured data.
 
@@ -30,17 +30,17 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `list versions {project} {entity}` | Lists all versions of an entity. |
 | `list commits {project} [entity]` | Returns all commits for a project (or a specific entity). |
 | `show {entity}` | Displays the currently active version of an entity as structured JSON. |
-| `show {entity} {version or commit_hash}` | Displays a specific version or commit of the entity. |
+| `show {entity(@version or #hash)}` | Displays a specific version or commit of the entity. |
 | `save {project} {entity} {full JSON}` | Saves an entity. If an ID exists, creates a new version and commit; otherwise creates a new entity. Returns version and deterministic commit hash. |
 | `create {project}` | Creates a new project. |
 | `remove {project} [entity]` | Marks the active version as invalid. |
-| `restore {project} [entity] [version or commit_hash]` | Reactivates a previous version or commit. |
+| `restore {project} [entity(@version or #hash)]` | Reactivates a previous version or commit. |
 | `delete {project} [entity]` | Permanently deletes all versions of a specified project or entity (use with caution). |
 
 ### Export Commands
 | Command | Description |
 |----------|-------------|
-| `export {project} [entities[:version or commit_hash]]` | Exports a project or subset as JSON for LLM use, including metadata for crawlers and parsers. |
+| `export {project} [entities[@version or #hash]]` | Exports a project or subset as JSON for LLM use, including metadata for crawlers and parsers. |
 
 ---
 

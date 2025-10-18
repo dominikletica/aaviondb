@@ -64,27 +64,33 @@
 
 **BrainAgent (`brain`)**
 - [ ] Commands: `brains`, `brain init`, `brain switch`, `brain backup`; surface integrity report.
+- [ ] Add maintenance subcommands for validation/compaction/repair (see Roadmap “Brain Integrity Utilities”).
 
 **ProjectAgent (`project`)**
 - [ ] Commands: `project list/create/remove/info`; coordinate cascade effects with EntityAgent.
 
 **EntityAgent (`entity`)**
 - [ ] Commands: `entity list/show/save/delete/restore`; enforce hashing + version semantics.
+- [ ] Adopt `@version` selectors from the start (documentation + parser support).
 
 **ExportAgent (`export`)**
-- [ ] Parser for `export {project} [entity[,entity]]` + optional `:version`/`:hash` selectors.
+- [ ] Parser for `export {project} [entity[,entity]]` + optional `@version`/`#hash` selectors.
 - [ ] Generate export payloads (project, subsets, or entire brain via `project=*`).
 - [ ] Manage presets/destinations; prepare Scheduler hooks for async exports.
+- [ ] Design export profiles for schema-aware/LLM-optimised output (Roadmap items).
 
 **AuthAgent (`auth`)**
 - [ ] Commands: `auth grant/list/revoke/reset` using repository helpers.
 - [ ] Integrate audit logging (LogAgent) + bootstrap key guidance.
+- [ ] Keep token storage ready for scoped keys / role sets (Access Control Extensions).
 
 **ApiAgent (`api`)**
 - [ ] Commands: `api serve/stop/status/reset`; validate REST readiness before enabling.
+- [ ] Expose hooks for batched/asynchronous actions (Enhanced REST API Layer).
 
 **UiAgent (`ui`)**
-- [ ] Scaffold CLI/HTTP console stubs; bridge to REST/API for optional remote execution.
+- [ ] Provide integration hooks for the standalone **AavionStudio** UI project.
+- [ ] Optional minimal console stubs only if required for diagnostics.
 
 **LogAgent (`log`)**
 - [ ] Commands: `log view <level>`, `log rotate`, `log cleanup` with filters/pagination.
@@ -92,6 +98,7 @@
 
 **EventsAgent (`events`)**
 - [ ] Commands: `events list`, `events stats`, optional subscription hooks; surface EventBus telemetry.
+- [ ] Offer data feed endpoints for future live event monitor/WebSocket bridge.
 
 **SchedulerAgent (`scheduler`)** *(future)*
 - [ ] Define scheduled job abstraction (cron-like spec + persistence).

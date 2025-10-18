@@ -45,5 +45,5 @@ Errors use the same structure (`status="error"`, `data=null`). HTTP status codes
 - `500` – unexpected server error (exception logged + sanitized response)
 
 ## UI Integration
-- Future UI (index.php) may execute commands via REST for debugging; it must include the logged-in user's API key automatically.  
-- When UI uses internal PHP execution instead, responses remain identical (same CommandResponse structure).
+- The planned **AavionStudio** front-end will communicate via REST; it must inject the authenticated user's API token automatically.  
+- When trusted integrations execute commands through embedded PHP, they should still return the standard CommandResponse payload.

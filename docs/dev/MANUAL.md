@@ -85,7 +85,7 @@
 - **Decouple UI Interface** → Migrate the integrated management UI into a standalone project: **AavionStudio**, a Vite-powered web application using TailwindCSS, PostCSS, Alpine.js, and Tabler Icons.  
 - **Add Fieldset Linting Module** → Introduce a `SchemaAgent` that hooks into `save project-slug:schema` commands and validates payloads against JSON Schemas stored as entities inside the userspace project `fieldsets`. 
 - **Schema Versioning & Compatibility Layer** → Add support for versioned schemas (e.g., `schema@19`) with backward compatibility validation between revisions.  
-- **Consistent Version Handling** → Change entity version handling to move from :version to @version.  
+- **Consistent Version Handling** → Standardise all commands on the `@version` selector (replace legacy documentation accordingly).  
 - **Extended Diagnostic Dashboard** → Enhance the built-in diagnostics with dependency visualization, memory footprint tracking, and event throughput statistics.  
 - **Testing Module Integration** → Provide a dedicated Testing Agent that coordinates `phpunit` runs, aggregates logs, and produces comprehensive QA reports.  
 - **Live Event Monitor** → Add real-time event tracing within AavionStudio using a WebSocket bridge.  

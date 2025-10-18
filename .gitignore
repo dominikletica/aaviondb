@@ -1,3 +1,9 @@
+# Ignore file for a PHP-based web application project
+# Generated on 2026-10-18
+
+# General ignores
+/ommitted/node_modules/
+
 # Build artefacts
 /node_modules/
 /dist/
