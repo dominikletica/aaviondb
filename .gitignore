@@ -16,6 +16,7 @@
 /user/storage/*.brain
 /user/cache/
 /user/exports/
+/user/presets/
 
 # Frontend build artefacts
 # Composer & Node lockfiles (retain root-level ones; ignore nested)
