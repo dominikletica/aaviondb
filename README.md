@@ -170,7 +170,8 @@ CLI:
 php api.php list projects
 ```
 
-Note: The preferred method is to use a parametric approach passing parameters and values: `brain`, `project`, `entity`, `ref`, `payload`, ...
+> Note: The preferred method is to use a parametric approach passing parameters and values: `brain`, `project`, `entity`, `ref`, `payload`, ...  
+
 All available commands and parameters can be found in the developers manual -> [MANUAL.md](docs/dev/MANUAL.md)
 
 ---
