@@ -10,12 +10,20 @@ use AavionDB\Core\EventBus;
 use AavionDB\Core\Exceptions\StorageException;
 use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Hashing\CanonicalJson;
+use AavionDB\Schema\SchemaException;
+use AavionDB\Schema\SchemaValidator;
 use Ramsey\Uuid\Uuid;
 use function in_array;
 use function strtolower;
 use function trim;
 use function array_values;
 use function array_filter;
+use function array_key_exists;
+use function is_array;
+use function is_string;
+use function is_bool;
+use function is_numeric;
+use function sprintf;
 
 /**
  * Manages lifecycle and persistence of system and user brain files.
@@ -41,6 +49,8 @@ final class BrainRepository
     private ?array $activeBrainData = null;
 
     private ?string $activeBrainPath = null;
+
+    private ?SchemaValidator $schemaValidator = null;
 
     /**
      * @var array{last_write?: array<string, mixed>|null, last_failure?: array<string, mixed>|null}
@@ -540,7 +550,7 @@ final class BrainRepository
      *
      * @return array<string, mixed> Commit metadata
      */
-    public function saveEntity(string $projectSlug, string $entitySlug, array $payload, array $meta = []): array
+    public function saveEntity(string $projectSlug, string $entitySlug, array $payload, array $meta = [], array $options = []): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
         $slugEntity = $this->normalizeKey($entitySlug);
@@ -568,6 +578,7 @@ final class BrainRepository
                 'active_version' => null,
                 'status' => 'active',
                 'archived_at' => null,
+                'fieldset' => null,
                 'versions' => [],
             ];
         }
@@ -575,18 +586,98 @@ final class BrainRepository
         $entity = &$project['entities'][$slugEntity];
         $entity['status'] = 'active';
         $entity['archived_at'] = null;
+
+        $mergePayload = $this->extractMergeOption($options['merge'] ?? null);
+        $sourceReference = $this->normalizeReference($options['source_reference'] ?? null);
+        $fieldsetProvided = ($options['fieldset_provided'] ?? false) === true;
+        $fieldsetReference = $fieldsetProvided ? $this->normalizeReference($options['fieldset_reference'] ?? null) : null;
+        $fieldsetSlugOption = $fieldsetProvided ? ($options['fieldset'] ?? null) : null;
+
+        $currentPayload = null;
+        if ($mergePayload) {
+            if ($sourceReference !== null) {
+                try {
+                    $sourceVersion = $this->getEntityVersion($projectSlug, $entitySlug, $sourceReference);
+                } catch (StorageException $exception) {
+                    throw new StorageException(sprintf('Merge source "%s" not found for entity "%s" in project "%s".', $sourceReference, $entitySlug, $projectSlug), 0, $exception);
+                }
+
+                $sourcePayload = $sourceVersion['payload'] ?? null;
+                if (!is_array($sourcePayload)) {
+                    throw new StorageException(sprintf('Merge source "%s" payload is invalid.', $sourceReference));
+                }
+
+                $currentPayload = $sourcePayload;
+            } elseif (isset($entity['active_version'], $entity['versions'][$entity['active_version']]['payload']) && \is_array($entity['versions'][$entity['active_version']]['payload'])) {
+                $currentPayload = $entity['versions'][$entity['active_version']]['payload'];
+            }
+        }
+
+        $mergedPayload = $this->mergeEntityPayload($currentPayload, $payload, $mergePayload);
+
+        if ($slugProject === 'fieldsets') {
+            try {
+                $this->schemaValidator()->assertValidSchema($mergedPayload);
+            } catch (SchemaException $exception) {
+                throw new StorageException(sprintf('Schema definition for "%s" is invalid: %s', $slugEntity, $exception->getMessage()), 0, $exception);
+            }
+            $entity['fieldset'] = null;
+            $fieldsetReference = null;
+        } else {
+            $desiredFieldset = $entity['fieldset'] ?? null;
+
+            if ($fieldsetProvided) {
+                if ($fieldsetSlugOption === null) {
+                    $desiredFieldset = null;
+                    $fieldsetReference = null;
+                } else {
+                    $candidate = trim((string) $fieldsetSlugOption);
+                    if ($candidate === '') {
+                        $desiredFieldset = null;
+                        $fieldsetReference = null;
+                    } else {
+                        $desiredFieldset = $this->normalizeKey($candidate);
+                    }
+                }
+            }
+
+            if (is_string($desiredFieldset) && $desiredFieldset !== '') {
+                $schemaPayload = $this->resolveSchemaPayload($desiredFieldset, $fieldsetReference);
+                try {
+                    $mergedPayload = $this->schemaValidator()->applySchema($mergedPayload, $schemaPayload);
+                } catch (SchemaException $exception) {
+                    throw new StorageException(sprintf('Payload for entity "%s" violates schema "%s": %s', $slugEntity, $desiredFieldset, $exception->getMessage()), 0, $exception);
+                }
+
+                $entity['fieldset'] = $desiredFieldset;
+            } else {
+                $entity['fieldset'] = null;
+                $fieldsetReference = null;
+            }
+        }
+
         $currentVersion = $this->determineNextVersion($entity['versions'] ?? []);
-        $hash = CanonicalJson::hash($payload);
+        $hash = CanonicalJson::hash($mergedPayload);
 
         $commitData = [
             'project' => $slugProject,
             'entity' => $slugEntity,
             'version' => $currentVersion,
             'hash' => $hash,
-            'payload' => $payload,
+            'payload' => $mergedPayload,
             'meta' => $meta,
             'timestamp' => $timestamp,
+            'merge' => $mergePayload,
+            'fieldset' => $entity['fieldset'] ?? null,
         ];
+
+        if ($sourceReference !== null) {
+            $commitData['source_reference'] = $sourceReference;
+        }
+
+        if ($fieldsetReference !== null) {
+            $commitData['fieldset_reference'] = $fieldsetReference;
+        }
 
         $commitHash = CanonicalJson::hash($commitData);
 
@@ -596,9 +687,18 @@ final class BrainRepository
             'commit' => $commitHash,
             'committed_at' => $timestamp,
             'status' => 'active',
-            'payload' => $payload,
+            'payload' => $mergedPayload,
             'meta' => $meta,
+            'merge' => $mergePayload,
         ];
+
+        if ($sourceReference !== null) {
+            $record['source_reference'] = $sourceReference;
+        }
+
+        if ($fieldsetReference !== null) {
+            $record['fieldset_reference'] = $fieldsetReference;
+        }
 
         if (isset($entity['active_version'], $entity['versions'][$entity['active_version']])) {
             $entity['versions'][$entity['active_version']]['status'] = 'inactive';
@@ -620,7 +720,17 @@ final class BrainRepository
             'version' => (string) $currentVersion,
             'hash' => $hash,
             'timestamp' => $timestamp,
+            'merge' => $mergePayload,
+            'fieldset' => $entity['fieldset'] ?? null,
         ];
+
+        if ($sourceReference !== null) {
+            $brain['commits'][$commitHash]['source_reference'] = $sourceReference;
+        }
+
+        if ($fieldsetReference !== null) {
+            $brain['commits'][$commitHash]['fieldset_reference'] = $fieldsetReference;
+        }
 
         $brain['meta']['updated_at'] = $timestamp;
         $this->activeBrainData = $brain;
@@ -632,6 +742,10 @@ final class BrainRepository
             'entity' => $slugEntity,
             'version' => (string) $currentVersion,
             'commit' => $commitHash,
+            'merge' => $mergePayload,
+            'fieldset' => $entity['fieldset'] ?? null,
+            'source_reference' => $sourceReference,
+            'fieldset_reference' => $fieldsetReference,
         ]);
 
         return [
@@ -641,6 +755,10 @@ final class BrainRepository
             'hash' => $hash,
             'commit' => $commitHash,
             'timestamp' => $timestamp,
+            'merge' => $mergePayload,
+            'fieldset' => $entity['fieldset'] ?? null,
+            'source_reference' => $sourceReference,
+            'fieldset_reference' => $fieldsetReference,
         ];
     }
 
@@ -2178,6 +2296,7 @@ final class BrainRepository
             'updated_at' => $entity['updated_at'] ?? null,
             'archived_at' => $entity['archived_at'] ?? null,
             'active_version' => $entity['active_version'] ?? null,
+            'fieldset' => $entity['fieldset'] ?? null,
             'version_count' => \count($versions),
         ];
     }
@@ -2202,6 +2321,145 @@ final class BrainRepository
             'context' => $context,
             'timestamp' => $this->timestamp(),
         ];
+    }
+
+    private function schemaValidator(): SchemaValidator
+    {
+        if ($this->schemaValidator === null) {
+            $this->schemaValidator = new SchemaValidator();
+        }
+
+        return $this->schemaValidator;
+    }
+
+    /**
+     * @param array<string, mixed>|null $current
+     * @param array<string, mixed> $updates
+     *
+     * @return array<string, mixed>
+     */
+    private function mergeEntityPayload(?array $current, array $updates, bool $merge): array
+    {
+        if (!$merge || $current === null) {
+            return $updates;
+        }
+
+        $result = $current;
+
+        foreach ($updates as $key => $value) {
+            if ($value === null) {
+                if (array_key_exists($key, $result)) {
+                    unset($result[$key]);
+                }
+                continue;
+            }
+
+            if (is_array($value)) {
+                if ($this->isAssociativeArray($value)) {
+                    $existing = array_key_exists($key, $result) && is_array($result[$key]) ? $result[$key] : [];
+                    if (!$this->isAssociativeArray($existing)) {
+                        $existing = [];
+                    }
+
+                    $merged = $this->mergeEntityPayload($existing, $value, true);
+                    if ($merged === []) {
+                        unset($result[$key]);
+                        continue;
+                    }
+
+                    $result[$key] = $merged;
+                    continue;
+                }
+
+                $result[$key] = $value;
+                continue;
+            }
+
+            $result[$key] = $value;
+        }
+
+        return $result;
+    }
+
+    private function extractMergeOption(mixed $value): bool
+    {
+        if ($value === null) {
+            return true;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) === 1;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if ($normalized === 'replace') {
+                return false;
+            }
+
+            return in_array($normalized, ['1', 'true', 'yes', 'y', 'on', 'merge'], true);
+        }
+
+        return true;
+    }
+
+    private function normalizeReference(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveSchemaPayload(string $fieldset, ?string $reference = null): array
+    {
+        try {
+            $record = $this->getEntityVersion('fieldsets', $fieldset, $reference);
+        } catch (StorageException $exception) {
+            if ($reference !== null) {
+                throw new StorageException(sprintf('Schema "%s" (reference %s) not found in project "fieldsets".', $fieldset, $reference), 0, $exception);
+            }
+
+            throw new StorageException(sprintf('Schema "%s" not found in project "fieldsets".', $fieldset), 0, $exception);
+        }
+
+        $payload = $record['payload'] ?? null;
+        if (!is_array($payload)) {
+            throw new StorageException(sprintf('Schema "%s" contains an invalid payload.', $fieldset));
+        }
+
+        try {
+            $this->schemaValidator()->assertValidSchema($payload);
+        } catch (SchemaException $exception) {
+            throw new StorageException(sprintf('Schema "%s" is invalid: %s', $fieldset, $exception->getMessage()), 0, $exception);
+        }
+
+        return $payload;
+    }
+
+    private function isAssociativeArray(array $value): bool
+    {
+        $expected = 0;
+
+        foreach ($value as $key => $_) {
+            if ($key !== $expected) {
+                return true;
+            }
+
+            $expected++;
+        }
+
+        return false;
     }
 
     /**

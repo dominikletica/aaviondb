@@ -1,0 +1,14 @@
+{
+    "name": "Schema Agent",
+    "slug": "schema",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage JSON schema fieldsets stored in the brain.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "logger.use"
+    ]
+}

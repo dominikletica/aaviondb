@@ -15,11 +15,13 @@
 
 ## Data Characteristics
 - JSON-based with deterministic canonical encoding (sorted associative keys, preserved indexed order).  
-- Entity versions include SHA-256 content hash, commit hash, timestamps, and status.  
+- Entity versions include SHA-256 content hash, commit hash, timestamps, status, merge flag, optional `fieldset` reference, and optional `source_reference` / `fieldset_reference` metadata for diagnostics.  
+- Incremental saves merge payload diffs by default (null removes keys, nested objects merge recursively, indexed arrays replace wholesale).  
 - Global `commits` map accelerates lookup by hash.
 
 ## Repository Helpers
-- `listProjects()`, `listEntities()`, `saveEntity()`, `getEntityVersion()` manage deterministic storage.  
+- `listProjects()`, `listEntities()`, `saveEntity()`, `getEntityVersion()` manage deterministic storage (including incremental merges + schema hooks).  
+- `resolveSchemaPayload()` (internal) loads fieldset definitions from project `fieldsets`, honours `@version`/`#commit` selectors, and validates entity payloads before persistence.  
 - Config API: `setConfigValue()`, `getConfigValue()`, `deleteConfigValue()`, `listConfig()` (supports system/user brains, performs key normalization).  
 - Auth/API helpers: `registerAuthToken()`, `revokeAuthToken()`, `listAuthTokens()`, `setApiEnabled()`, `isApiEnabled()`, `updateBootstrapKey()` provide canonical mutations for security state (emit events, update telemetry).  
 - Atomic writes with integrity verification (write temp file → rename → re-read + hash validation); retries once on mismatch, logs failures, records telemetry (`integrityReport()`).

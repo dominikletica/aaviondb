@@ -70,7 +70,7 @@
 - [`docs/dev/partials/authentication.md`](./partials/authentication.md) *(DRAFT)*
 
 ## 🧬 Versioning & Commit Hashes
-- [`docs/dev/partials/versioning.md`](./partials/versioning.md) *(DRAFT)*
+- [`docs/dev/partials/versioning.md`](./partials/versioning.md)
 
 ## 🪝 Hooks, Events & Listeners
 - [`docs/dev/partials/events-and-hooks.md`](./partials/events-and-hooks.md) *(DRAFT)*
@@ -87,7 +87,7 @@
 > These items are not yet implemented but serve as design reminders for Codex and contributors.
 
 - **Decouple UI Interface** → Migrate the integrated management UI into a standalone project: **AavionStudio**, a Vite-powered web application using TailwindCSS, PostCSS, Alpine.js, and Tabler Icons.  
-- **Add Fieldset Linting Module** → Introduce a `SchemaAgent` that hooks into `save project-slug:schema` commands and validates payloads against JSON Schemas stored as entities inside the userspace project `fieldsets`. 
+- **SchemaAgent Enhancements** → Extend the new `SchemaAgent` with create/update commands, cached lint results, and Studio authoring workflows. 
 - **Schema Versioning & Compatibility Layer** → Add support for versioned schemas (e.g., `schema@19`) with backward compatibility validation between revisions.  
 - **Consistent Version Handling** → Standardise all commands on the `@version` selector (replace legacy documentation accordingly).  
 - **Extended Diagnostic Dashboard** → Enhance the built-in diagnostics with dependency visualization, memory footprint tracking, and event throughput statistics.  

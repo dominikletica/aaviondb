@@ -22,7 +22,7 @@ return [
         'entity save' => [
             'description' => 'Persist an entity payload as a new version.',
             'group' => 'entity',
-            'usage' => 'entity save <project> <entity> {json payload}',
+            'usage' => 'entity save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {json payload}',
         ],
         'entity delete' => [
             'description' => 'Archive or purge an entity.',

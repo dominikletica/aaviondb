@@ -18,7 +18,7 @@
 - **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [ ] add compaction/repair utilities; [ ] optional cleanup command for inactive versions.
 - **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [ ] cascade coordination with EntityAgent.
 - **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
-- **EntityAgent (`entity`)** (upcoming): [ ] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge).
+- **EntityAgent (`entity`)**: [x] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge); [ ] allow schema selectors to target historical revisions (e.g. `fieldset@13` / `#hash`) and evaluate merges against non-active entity versions.
 - **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [ ] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
 - **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] integrate audit logging + bootstrap key guidance; [ ] prepare scoped key/role management.
 - **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] batched/async hooks.
@@ -26,7 +26,7 @@
 - **LogAgent (`log`)**: [x] Tail/framework log filtering; [ ] rotation/cleanup commands; [ ] log storage abstraction.
 - **EventsAgent (`events`)**: [ ] Event stream commands/stats; [ ] subscription/feed endpoints.
 - **SchedulerAgent (`scheduler`)** (future): [ ] Job abstraction; [ ] log/audit integration; [ ] CLI management commands.
-- **SchemaAgent (`schema`)** (planned): [ ] Manage project `fieldsets` brain; [ ] enforce JSON-Schema validation via `:schema` selectors during entity saves; [ ] document merge order with EntityAgent incremental updates.
+- **SchemaAgent (`schema`)**: [x] Baseline list/show/lint commands; [ ] create/update fieldset helpers (wrapper around `entity save fieldsets <slug>` with lint + metadata scaffold); [ ] Studio integration hooks; [ ] cached lint results & metrics.
 
 ## 2025-10-17
 
@@ -99,9 +99,12 @@
 ## 2025-10-19 – Afternoon Session
 
 - Session kickoff: document preset roadmap and track regex filter support for export payload matching.
+- Implemented incremental entity saves with schema-aware validation: BrainRepository merges payload diffs, honours explicit null removals, applies fieldset-selected JSON Schemas (including placeholder/default expansion), and rejects invalid schema definitions in `fieldsets`. EntityAgent now parses `slug:schema` selectors, optional `fieldset`/`merge` flags, and surfaces merge metadata in responses.
+- Extended selectors: `entity@version`/`#commit` and `fieldset@version`/`#commit` are honoured during saves; merge source and schema references are persisted for diagnostics.
+- Introduced SchemaAgent module (list/show/lint) leveraging the shared SchemaValidator; docs updated and TODOs adjusted for future enhancements.
 
 ### Design Notes – Entity Partial Saves & Schema Validation
-- Merge flow: load the current active entity version, deep-copy its payload, overlay incoming fields (associative arrays merge recursively, indexed arrays replace wholesale), and treat explicit empty strings/nulls/empty arrays as deletion markers (remove key from merged payload).
+- Merge flow: load the current active entity version, deep-copy its payload, overlay incoming fields (associative arrays merge recursively, indexed arrays replace wholesale), and treat explicit `null` values as deletion markers (remove key from merged payload).
 - Persisted version: after merge, rebuild canonical JSON, compute hash, and append as the next version so history stays complete; include a `merge` flag in the version metadata for diagnostics.
 - Determinism: REST/CLI clients should send only changed fields; deletions must pass explicit empties to avoid accidental data loss. Document the contract in MANUAL + API reference.
 - Fieldset handling: entity metadata gains `fieldset` (schema ID). On save, resolve `fieldsets` project inside the active brain, load schema payload (standard JSON Schema), and validate the merged payload. Missing optional fields get auto-filled with empty values defined by schema defaults or type-appropriate fallbacks.

@@ -14,6 +14,7 @@ use function array_map;
 use function array_shift;
 use function array_unshift;
 use function array_values;
+use function array_filter;
 use function count;
 use function explode;
 use function in_array;
@@ -21,8 +22,13 @@ use function is_array;
 use function is_bool;
 use function is_numeric;
 use function is_string;
+use function sprintf;
+use function str_contains;
 use function str_starts_with;
+use function strpos;
+use function substr;
 use function strtolower;
+use function min;
 use function trim;
 
 final class EntityAgent
@@ -276,9 +282,44 @@ final class EntityAgent
     private function entitySaveCommand(array $parameters): CommandResponse
     {
         $project = $this->extractProject($parameters, 'entity save');
-        $entity = $this->extractEntity($parameters, 'entity save');
-        if ($project === null || $entity === null) {
+        $entityIdentifier = $this->extractEntity($parameters, 'entity save');
+
+        if ($project === null || $entityIdentifier === null) {
             return CommandResponse::error('entity save', 'Parameters "project" and "entity" are required.');
+        }
+
+        $entityToken = $entityIdentifier;
+        $fieldsetToken = null;
+
+        if (str_contains($entityIdentifier, ':')) {
+            [$entityToken, $fieldsetToken] = explode(':', $entityIdentifier, 2);
+        }
+
+        $entitySelector = $this->parseSelector($entityToken, false);
+        $entity = $entitySelector['slug'];
+        $sourceReference = $entitySelector['reference'];
+
+        if ($entity === null || $entity === '') {
+            return CommandResponse::error('entity save', 'Entity slug cannot be empty.');
+        }
+
+        $fieldsetProvided = false;
+        $fieldsetSlug = null;
+        $fieldsetReference = null;
+
+        if ($fieldsetToken !== null) {
+            $fieldsetProvided = true;
+            $inline = $this->parseSelector($fieldsetToken, true);
+            $fieldsetSlug = $inline['slug'];
+            $fieldsetReference = $inline['reference'];
+
+            if ($fieldsetSlug === null) {
+                return CommandResponse::error('entity save', 'Inline fieldset selector is invalid.');
+            }
+
+            if ($fieldsetSlug === '' && $fieldsetReference !== null) {
+                return CommandResponse::error('entity save', 'Fieldset reference requires a fieldset slug.');
+            }
         }
 
         $payload = $parameters['payload'] ?? null;
@@ -291,10 +332,58 @@ final class EntityAgent
             $meta = $parameters['meta'];
         }
 
-        try {
-            $commit = $this->brains->saveEntity($project, $entity, $payload, $meta);
+        if (\array_key_exists('fieldset', $parameters)) {
+            $fieldsetProvided = true;
+            $candidate = $parameters['fieldset'];
 
-            return CommandResponse::success('entity save', $commit, sprintf('Entity "%s" saved (version %s).', $entity, $commit['version'] ?? '')); 
+            if ($candidate === null || $candidate === '') {
+                $fieldsetSlug = '';
+                $fieldsetReference = null;
+            } elseif (\is_string($candidate)) {
+                $parsed = $this->parseSelector($candidate, true);
+                $fieldsetSlug = $parsed['slug'];
+                $fieldsetReference = $parsed['reference'];
+
+                if ($fieldsetSlug === null) {
+                    return CommandResponse::error('entity save', 'Fieldset selector is invalid.');
+                }
+
+                if ($fieldsetSlug === '' && $fieldsetReference !== null) {
+                    return CommandResponse::error('entity save', 'Fieldset reference requires a fieldset slug.');
+                }
+            } else {
+                return CommandResponse::error('entity save', 'Fieldset selector must be a string or empty.');
+            }
+        }
+
+        if ($fieldsetProvided && $fieldsetSlug !== null) {
+            $fieldsetSlug = strtolower($fieldsetSlug);
+        }
+
+        $mergeOption = $parameters['merge'] ?? $parameters['mode'] ?? null;
+
+        try {
+            $options = [];
+
+            if ($sourceReference !== null) {
+                $options['source_reference'] = $sourceReference;
+            }
+
+            if ($fieldsetProvided) {
+                $options['fieldset_provided'] = true;
+                $options['fieldset'] = $fieldsetSlug;
+                if ($fieldsetReference !== null) {
+                    $options['fieldset_reference'] = $fieldsetReference;
+                }
+            }
+
+            if ($mergeOption !== null) {
+                $options['merge'] = $mergeOption;
+            }
+
+            $commit = $this->brains->saveEntity($project, $entity, $payload, $meta, $options);
+
+            return CommandResponse::success('entity save', $commit, sprintf('Entity "%s" saved (version %s).', $entity, $commit['version'] ?? ''));
         } catch (Throwable $exception) {
             $this->logger->error('Failed to save entity', [
                 'project' => $project,
@@ -428,5 +517,54 @@ final class EntityAgent
         }
 
         return false;
+    }
+
+    /**
+     * @return array{slug: ?string, reference: ?string}
+     */
+    private function parseSelector(string $value, bool $allowEmptySlug): array
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return [
+                'slug' => $allowEmptySlug ? '' : null,
+                'reference' => null,
+            ];
+        }
+
+        $reference = null;
+        $slugPart = $value;
+
+        $positions = array_filter([
+            strpos($value, '@'),
+            strpos($value, '#'),
+        ], static fn ($position) => $position !== false);
+
+        if ($positions !== []) {
+            $split = (int) min($positions);
+            $slugPart = substr($value, 0, $split);
+            $reference = substr($value, $split);
+        }
+
+        $slug = strtolower(trim($slugPart));
+        if ($slug === '' && !$allowEmptySlug) {
+            return [
+                'slug' => null,
+                'reference' => null,
+            ];
+        }
+
+        if ($reference !== null) {
+            $reference = trim($reference);
+            if ($reference === '') {
+                $reference = null;
+            }
+        }
+
+        return [
+            'slug' => $slug,
+            'reference' => $reference,
+        ];
     }
 }
