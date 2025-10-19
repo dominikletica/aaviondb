@@ -1,0 +1,345 @@
+# Class Map
+
+Inventory of all classes in the `AavionDB\*` namespace with their public methods.
+- **AavionDB**
+  - **AavionDB**
+    - `AavionDB\AavionDB`
+      - static _resetForTests(): void
+      - static auth(): AavionDB\Core\Security\AuthManager
+      - static brains(): AavionDB\Storage\BrainRepository
+      - static command(string $statement): array
+      - static commands(): AavionDB\Core\CommandRegistry
+      - static config(): array
+      - static diagnose(): array
+      - static events(): AavionDB\Core\EventBus
+      - static isBooted(): bool
+      - static logger(): Psr\Log\LoggerInterface
+      - static parser(): AavionDB\Core\CommandParser
+      - static registerParserHandler(?string $action, callable $handler, int $priority = 0): void
+      - static run(string $action, array $parameters = []): array
+      - static scope(): array
+      - static setup(array $options = []): void
+      - static withScope(array $scope, callable $callback): array
+  - **Core**
+    - **Bootstrap**
+      - `AavionDB\Core\Bootstrap`
+        - __construct(string $rootPath, array $config = [])
+        - boot(array $options = []): AavionDB\Core\RuntimeState
+    - **Cache**
+      - `AavionDB\Core\Cache\CacheManager`
+        - ensureDefaults(): void
+        - registerEventListeners(AavionDB\Core\EventBus $events): void
+        - isEnabled(): bool
+        - setEnabled(bool $enabled): void
+        - ttl(): int
+        - setTtl(int $seconds): void
+        - get(string $key, $default = null, bool $allowInactive = false)
+        - put(string $key, $value, ?int $ttl = null, array $tags = [], bool $allowInactive = false): void
+        - remember(string $key, callable $callback, ?int $ttl = null, array $tags = [])
+        - forget(string $key): void
+        - flush(?array $tags = null): int
+        - cleanupExpired(): int
+        - directory(): string
+    - **CommandParser**
+      - `AavionDB\Core\CommandParser`
+        - __construct(AavionDB\Core\EventBus $events)
+        - diagnostics(): array
+        - parse(string $statement): AavionDB\Core\ParsedCommand
+        - registerHandler(?string $action, callable $handler, int $priority = 0): void
+    - **CommandRegistry**
+      - `AavionDB\Core\CommandRegistry`
+        - all(): array
+        - dispatch(string $name, array $parameters = []): AavionDB\Core\CommandResponse
+        - parser(): ?AavionDB\Core\CommandParser
+        - register(string $name, callable $handler, array $meta = []): void
+        - registerParserHandler(?string $action, callable $handler, int $priority = 0): void
+        - setEventBus(AavionDB\Core\EventBus $events): void
+        - setLogger(Psr\Log\LoggerInterface $logger): void
+        - setParser(AavionDB\Core\CommandParser $parser): void
+    - **CommandResponse**
+      - `AavionDB\Core\CommandResponse`
+        - static error(string $action, string $message, array $meta = []): self
+        - static fromPayload(string $action, $payload, array $parameters = []): self
+        - jsonSerialize(): array
+        - static success(string $action, $data = null, string $message = 'ok', array $meta = []): self
+        - toArray(): array
+    - **Container**
+      - `AavionDB\Core\Container`
+        - get(string $id)
+        - has(string $id): bool
+        - set(string $id, callable $factory): void
+        - setInstance(string $id, $instance): void
+    - **EventBus**
+      - `AavionDB\Core\EventBus`
+        - emit(string $event, array $payload = []): void
+        - listenerCount(): array
+        - on(string $event, callable $listener): void
+    - **Exceptions**
+      - **AavionException**
+        - `AavionDB\Core\Exceptions\AavionException`
+      - **BootstrapException**
+        - `AavionDB\Core\Exceptions\BootstrapException`
+      - **CommandException**
+        - `AavionDB\Core\Exceptions\CommandException`
+      - **StorageException**
+        - `AavionDB\Core\Exceptions\StorageException`
+    - **Filesystem**
+      - **PathLocator**
+        - `AavionDB\Core\Filesystem\PathLocator`
+          - __construct(string $rootPath, array $config = [])
+          - ensureDefaultDirectories(): void
+          - root(): string
+          - system(): string
+          - systemBrain(): string
+          - systemLogs(): string
+          - systemModules(): string
+          - systemStorage(): string
+          - user(): string
+          - userBackups(): string
+          - userBrain(string $slug): string
+          - userExports(): string
+          - userModules(): string
+          - userStorage(): string
+    - **Hashing**
+      - **CanonicalJson**
+        - `AavionDB\Core\Hashing\CanonicalJson`
+          - static encode($value): string
+          - static hash($value): string
+    - **Logging**
+      - **LoggerFactory**
+        - `AavionDB\Core\Logging\LoggerFactory`
+          - __construct(string $logDirectory, string $channel = 'aaviondb', ?Monolog\Level $level = null)
+          - create(): Monolog\Logger
+    - **Modules**
+      - **ModuleContext**
+        - `AavionDB\Core\Modules\ModuleContext`
+          - __construct(AavionDB\Core\Modules\ModuleDescriptor $descriptor, AavionDB\Core\Container $container, AavionDB\Core\CommandRegistry $commands, AavionDB\Core\EventBus $events, AavionDB\Core\Filesystem\PathLocator $paths, Psr\Log\LoggerInterface $logger, array $capabilities)
+          - auth(): AavionDB\Core\Security\AuthManager
+          - brains(): AavionDB\Storage\BrainRepository
+          - commands(): AavionDB\Core\CommandRegistry
+          - container(): AavionDB\Core\Container
+          - descriptor(): AavionDB\Core\Modules\ModuleDescriptor
+          - events(): AavionDB\Core\EventBus
+          - hasCapability(string $capability): bool
+          - logger(): Psr\Log\LoggerInterface
+          - paths(): AavionDB\Core\Filesystem\PathLocator
+      - **ModuleDescriptor**
+        - `AavionDB\Core\Modules\ModuleDescriptor`
+          - __construct(string $slug, string $name, string $version, string $scope, string $path, array $manifest, array $definition, array $dependencies, bool $autoload, array $capabilities, ?callable $initializer, array $issues = [])
+          - autoload(): bool
+          - capabilities(): array
+          - definition(): array
+          - dependencies(): array
+          - hasIssues(): bool
+          - initializer(): ?callable
+          - issues(): array
+          - manifest(): array
+          - name(): string
+          - path(): string
+          - scope(): string
+          - slug(): string
+          - toArray(): array
+          - version(): string
+      - **ModuleLoader**
+        - `AavionDB\Core\Modules\ModuleLoader`
+          - __construct(AavionDB\Core\Filesystem\PathLocator $paths, AavionDB\Core\Container $container, AavionDB\Core\CommandRegistry $commands, AavionDB\Core\EventBus $events, Psr\Log\LoggerInterface $logger)
+          - diagnostics(): array
+          - discover(): void
+          - errors(): array
+          - get(string $slug): ?AavionDB\Core\Modules\ModuleDescriptor
+          - initialisationErrors(): array
+          - initialise(): void
+          - initialised(): array
+          - modules(): array
+    - **ParsedCommand**
+      - `AavionDB\Core\ParsedCommand`
+        - __construct(string $action, array $parameters, array $tokens, $payload, string $rawStatement, string $rawArguments, ?string $rawJson, array $metadata = [])
+        - action(): string
+        - metadata(): array
+        - parameters(): array
+        - payload()
+        - rawArguments(): string
+        - rawJson(): ?string
+        - rawStatement(): string
+        - tokens(): array
+    - **ParserContext**
+      - `AavionDB\Core\ParserContext`
+        - __construct(string $rawStatement, string $action, string $rawArguments, ?string $rawJson, array $tokens, $payload)
+        - action(): string
+        - finalize(): AavionDB\Core\ParsedCommand
+        - isPropagationStopped(): bool
+        - mergeMetadata(array $metadata): void
+        - mergeParameters(array $parameters): void
+        - payload()
+        - rawArguments(): string
+        - rawJson(): ?string
+        - rawStatement(): string
+        - setAction(string $action): void
+        - setMetadata(array $metadata): void
+        - setParameter(string $key, $value): void
+        - setParameters(array $parameters): void
+        - setPayload($payload): void
+        - setRawJson(?string $json): void
+        - setTokens(array $tokens): void
+        - stopPropagation(): void
+        - tokens(): array
+    - **RuntimeState**
+      - `AavionDB\Core\RuntimeState`
+        - __construct(AavionDB\Core\Container $container, DateTimeImmutable $bootedAt, array $context = [])
+        - bootedAt(): DateTimeImmutable
+        - container(): AavionDB\Core\Container
+        - context(): array
+        - diagnostics(): array
+    - **Security**
+      - **AuthManager**
+        - `AavionDB\Core\Security\AuthManager`
+          - __construct(AavionDB\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger, array $config = [])
+          - guardRestAccess(?string $token, string $action): array
+      - **SecurityManager**
+        - `AavionDB\Core\Security\SecurityManager`
+          - __construct(AavionDB\Storage\BrainRepository $brains, AavionDB\Core\Cache\CacheManager $cache, Psr\Log\LoggerInterface $logger)
+          - ensureDefaults(): void
+          - isEnabled(): bool
+          - setEnabled(bool $enabled): void
+          - config(): array
+          - preflight(string $clientKey, array $context = []): ?array
+          - registerAttempt(string $clientKey, array $context = []): ?array
+          - registerFailure(string $clientKey, array $context = []): array
+          - registerSuccess(string $clientKey, array $context = []): void
+          - lockdown(?int $duration = null, string $reason = 'manual'): array
+          - purge(): int
+          - status(): array
+    - **Support**
+      - **Arr**
+        - `AavionDB\Core\Support\Arr`
+          - static isAssoc(array $array): bool
+          - static ksortRecursive($value)
+  - **Modules**
+    - **Api**
+      - **ApiAgent**
+        - `AavionDB\Modules\Api\ApiAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Auth**
+      - **AuthAgent**
+        - `AavionDB\Modules\Auth\AuthAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Cache**
+      - **CacheAgent**
+        - `AavionDB\Modules\Cache\CacheAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Brain**
+      - **BrainAgent**
+        - `AavionDB\Modules\Brain\BrainAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Config**
+      - **ConfigAgent**
+        - `AavionDB\Modules\Config\ConfigAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Core**
+      - **CoreAgent**
+        - `AavionDB\Modules\Core\CoreAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Entity**
+      - **EntityAgent**
+        - `AavionDB\Modules\Entity\EntityAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Export**
+      - **ExportAgent**
+        - `AavionDB\Modules\Export\ExportAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Log**
+      - **LogAgent**
+        - `AavionDB\Modules\Log\LogAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Project**
+      - **ProjectAgent**
+        - `AavionDB\Modules\Project\ProjectAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Security**
+      - **SecurityAgent**
+        - `AavionDB\Modules\Security\SecurityAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Scheduler**
+      - **SchedulerAgent**
+        - `AavionDB\Modules\Scheduler\SchedulerAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Schema**
+      - **SchemaAgent**
+        - `AavionDB\Modules\Schema\SchemaAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+  - **Schema**
+    - **SchemaException**
+      - `AavionDB\Schema\SchemaException`
+    - **SchemaValidator**
+      - `AavionDB\Schema\SchemaValidator`
+        - applySchema(array $payload, array $schema): array
+        - assertValidSchema(array $schema): void
+  - **Storage**
+    - **BrainRepository**
+      - `AavionDB\Storage\BrainRepository`
+        - __construct(AavionDB\Core\Filesystem\PathLocator $paths, AavionDB\Core\EventBus $events, array $options = [])
+        - activeBrain(): ?string
+        - archiveEntity(string $projectSlug, string $entitySlug): array
+        - archiveProject(string $projectSlug): array
+        - authDiagnostics(): array
+        - backupBrain(?string $slug = null, ?string $label = null): array
+        - brainReport(?string $slug = null): array
+        - createBrain(string $slug, bool $activate = false): array
+        - createProject(string $projectSlug, ?string $title = null, ?string $description = null): array
+        - createSchedulerTask(string $slug, string $command): array
+        - deactivateEntity(string $projectSlug, string $entitySlug): array
+        - deleteBrain(string $slug): array
+        - deleteConfigValue(string $key, bool $system = false): void
+        - deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true): void
+        - deleteEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
+        - deleteProject(string $projectSlug, bool $purgeCommits = true): void
+        - deleteSchedulerTask(string $slug): void
+        - ensureActiveBrain(): string
+        - ensureSystemBrain(array $overrides = []): array
+        - entityReport(string $projectSlug, string $entitySlug, bool $includeVersions = true): array
+        - getConfigValue(string $key, $default = null, bool $system = false)
+        - getEntityVersion(string $projectSlug, string $entitySlug, ?string $reference = null): array
+        - getProject(string $projectSlug): array
+        - getSchedulerTask(string $slug): ?array
+        - integrityReport(): array
+        - integrityReportFor(?string $slug = null): array
+        - isApiEnabled(): bool
+        - listAuthTokens(bool $includeRevoked = true): array
+        - listBrains(): array
+        - listConfig(bool $system = false): array
+        - listEntities(string $projectSlug): array
+        - listEntityVersions(string $projectSlug, string $entitySlug): array
+        - listProjectCommits(string $projectSlug, ?string $entitySlug = null): array
+        - listProjects(): array
+        - listSchedulerLog(int $limit = 20): array
+        - listSchedulerTasks(): array
+        - projectReport(string $projectSlug, bool $includeEntities = true): array
+        - purgeInactiveEntityVersions(string $projectSlug, ?string $entitySlug = null, int $keep = 0): array
+        - recordSchedulerRun(array $results, int $durationMs, int $maxEntries = 100): array
+        - registerAuthToken(string $token, array $metadata = []): array
+        - resetAuthTokens(): array
+        - restoreEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
+        - revokeAuthToken(string $identifier, array $metadata = []): bool
+        - saveEntity(string $projectSlug, string $entitySlug, array $payload, array $meta = [], array $options = []): array
+        - setActiveBrain(string $slug): array
+        - setApiEnabled(bool $enabled, array $metadata = []): bool
+        - setConfigValue(string $key, $value, bool $system = false): void
+        - systemAuthState(): array
+        - touchAuthKey(string $hash, ?string $preview = null): void
+        - updateBootstrapKey(string $token, bool $active = true): void
+        - updateProjectMetadata(string $projectSlug, ?string $title = null, ?string $description = null): array
+        - updateSchedulerTask(string $slug, string $command): array
+        - updateSchedulerTaskRun(string $slug, string $status, string $timestamp, ?string $message = null): void

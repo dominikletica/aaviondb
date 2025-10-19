@@ -1,0 +1,85 @@
+# Command Reference
+
+Quick overview of the currently available CLI commands, including aliases, usage hints, and short descriptions. All commands follow the unified response schema (`status`, `action`, `message`, `data`, `meta`).
+
+- `api`
+    - `reset` – Disable REST access and revoke all tokens (`api reset`).
+    - `serve` – Enable the REST API (`api serve`).
+    - `status` – Show REST telemetry (enabled flag, counters, timestamps) (`api status`).
+    - `stop` – Disable the REST API (`api stop`).
+- `auth`
+    - `grant` – Issue a scoped API token (`auth grant [label="..."] [projects=...]`).
+    - `list` – List issued API tokens (`auth list`).
+    - `reset` – Reset authentication state to bootstrap defaults (`auth reset`).
+    - `revoke` – Revoke a token by plain value or preview (`auth revoke <token|preview>`).
+- `brain`
+    - `backup` – Create a backup snapshot (`brain backup [slug] [label=name]`).
+    - `cleanup` – Purge inactive versions with optional entity filter (`brain cleanup <project> [entity] [keep=0]`).
+    - `delete` – Delete a non-active user brain (`brain delete <slug>`).
+    - `info` – Display brain metadata (`brain info [slug]`).
+    - `init` – Create a new brain and optionally activate it (`brain init <slug> [switch=1]`).
+    - `switch` – Switch the active brain (`brain switch <slug>`).
+    - `validate` – Run integrity diagnostics (`brain validate [slug]`).
+- `brains` – Alias returning the list of available brains (`brains`).
+- `cache`
+    - `enable` – Persistently enable caching for the active deployment (`cache enable`).
+    - `disable` – Disable caching and flush artefacts (`cache disable`).
+    - `ttl` – Update the default cache TTL in seconds (`cache ttl <seconds>` or `cache ttl=<seconds>`).
+    - `purge` – Remove cached entries globally or by key/tag (`cache purge [key=...] [tag=a,b]`).
+    - `status` – Default subcommand; shows current cache settings (`cache status`).
+- `config`
+    - `get` – Read a configuration value (user or system brain) (`get [key] [--system]`).
+    - `set` – Update or delete a configuration entry (`set <key> [value] [--system]`).
+- `cron` – Execute all scheduled tasks (CLI/REST, unauthenticated) (`cron`).
+- `delete` – Alias for entity deletion (`delete <project> <entity[@version|#commit][,...]>`).
+- `diagnose` – Emit diagnostic snapshot (`diagnose`).
+- `entity`
+    - `delete` – Delete entities or targeted versions (`entity delete <project> <entity[@version|#commit][,...]>`).
+    - `list` – List entities of a project (`entity list <project> [with_versions=1]`).
+    - `remove` – Deactivate active versions (`entity remove <project> <entity[,entity2]>`).
+    - `restore` – Restore a specific version (`entity restore <project> <entity> <@version|#commit>`).
+    - `save` – Persist a (possibly merged) payload (`entity save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {json}`).
+    - `show` – Show the active or selected version (`entity show <project> <entity> [@version|#commit]`).
+    - `versions` – List versions for an entity (`entity versions <project> <entity>`).
+- `export` – Generate export bundles (`export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="..."] [usage="..."] [preset]`).
+- `get` – Alias for `config get`.
+- `help` – List commands or show details (`help [command=name]`).
+- `list`
+    - `commits` – Alias to list project/entity commits (`list commits <project> [entity] [limit=50]`).
+    - `entities` – Alias to list entities (`list entities <project>`).
+    - `projects` – Alias to list projects (`list projects`).
+    - `versions` – Alias to list versions (`list versions <project> <entity>`).
+- `log` – Tail framework logs (`log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]`).
+- `project`
+    - `commits` – Show commit history (`project commits <slug> [entity] [limit=50]`).
+    - `create` – Create project with metadata (`project create <slug> [title="..."] [description="..."]`).
+    - `delete` – Permanently delete a project (`project delete <slug> [purge_commits=1]`).
+    - `info` – Display project summary (`project info <slug>`).
+    - `list` – Alias to list projects (`project list`).
+    - `remove` – Archive a project (`project remove <slug>`).
+    - `update` – Update metadata (`project update <slug> [title="..."] [description="..."]`).
+- `remove` – Alias for entity removal.
+- `restore` – Alias for entity restore.
+- `save` – Alias for entity save.
+- `scheduler`
+    - `add` – Register a scheduled CLI command (`scheduler add <slug> <command>`).
+    - `edit` – Update the stored command (`scheduler edit <slug> <command>`).
+    - `list` – List scheduler tasks (`scheduler list`).
+    - `log` – Show scheduler execution history (`scheduler log [limit=20]`).
+    - `remove` – Delete a scheduled task (`scheduler remove <slug>`).
+- `schema`
+    - `lint` – Validate JSON schema payloads (`schema lint {json}`).
+    - `list` – List available fieldset schemas (`schema list [with_versions=1]`).
+    - `show` – Show a schema revision (`schema show <fieldset[@version|#commit]>`).
+- `security`
+    - `config` / `status` – Display security configuration and lockdown state (`security config`).
+    - `enable` – Enable rate limiting enforcement (`security enable`).
+    - `disable` – Disable rate limiting and purge security cache (`security disable`).
+    - `lockdown` – Trigger a manual lockdown (`security lockdown [seconds]`).
+    - `purge` – Remove cached security artefacts (`security purge`).
+- `set` – Alias for `config set`.
+- `show` – Alias for entity show.
+- `status` – Alias for core status snapshot (`status`).
+- `scheduler` commands rely on `cron`; ensure tasks reference full CLI statements.
+
+Refer to the individual module documentation in `docs/dev/partials/modules/*.md` for deep dives, examples, and error handling notes.

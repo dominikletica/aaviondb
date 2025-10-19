@@ -50,8 +50,10 @@ final class EntityAgent
     {
         $this->registerParser();
         $this->registerListCommand();
+        $this->registerVersionsCommand();
         $this->registerShowCommand();
         $this->registerSaveCommand();
+        $this->registerRemoveCommand();
         $this->registerDeleteCommand();
         $this->registerRestoreCommand();
     }
@@ -73,14 +75,19 @@ final class EntityAgent
                 case 'list':
                     $context->setAction('entity list');
                     break;
+                case 'versions':
+                    $context->setAction('entity versions');
+                    break;
                 case 'show':
                     $context->setAction('entity show');
                     break;
                 case 'save':
                     $context->setAction('entity save');
                     break;
-                case 'delete':
                 case 'remove':
+                    $context->setAction('entity remove');
+                    break;
+                case 'delete':
                     $context->setAction('entity delete');
                     break;
                 case 'restore':
@@ -100,8 +107,8 @@ final class EntityAgent
     {
         $parameters = [];
 
-        $expectProject = in_array($action, ['entity list', 'entity show', 'entity save', 'entity delete', 'entity restore'], true);
-        $expectEntity = in_array($action, ['entity show', 'entity save', 'entity delete', 'entity restore'], true);
+        $expectProject = in_array($action, ['entity list', 'entity versions', 'entity show', 'entity save', 'entity delete', 'entity restore', 'entity remove'], true);
+        $expectEntity = in_array($action, ['entity versions', 'entity show', 'entity save', 'entity delete', 'entity restore', 'entity remove'], true);
         $expectReference = in_array($action, ['entity show', 'entity restore'], true);
 
         if ($expectProject && $tokens !== []) {
@@ -119,6 +126,13 @@ final class EntityAgent
         foreach ($tokens as $token) {
             $token = trim($token);
             if ($token === '') {
+                continue;
+            }
+
+             if (in_array($action, ['entity remove', 'entity delete'], true)
+                && !str_starts_with($token, '--')
+                && strpos($token, '=') === false) {
+                $parameters['entity_extra'][] = $token;
                 continue;
             }
 
@@ -159,6 +173,17 @@ final class EntityAgent
         ]);
     }
 
+    private function registerVersionsCommand(): void
+    {
+        $this->context->commands()->register('entity versions', function (array $parameters): CommandResponse {
+            return $this->entityVersionsCommand($parameters);
+        }, [
+            'description' => 'List versions for a specific entity within a project.',
+            'group' => 'entity',
+            'usage' => 'entity versions <project> <entity>',
+        ]);
+    }
+
     private function registerShowCommand(): void
     {
         $this->context->commands()->register('entity show', function (array $parameters): CommandResponse {
@@ -181,14 +206,25 @@ final class EntityAgent
         ]);
     }
 
+    private function registerRemoveCommand(): void
+    {
+        $this->context->commands()->register('entity remove', function (array $parameters): CommandResponse {
+            return $this->entityRemoveCommand($parameters);
+        }, [
+            'description' => 'Deactivate the active version of one or more entities.',
+            'group' => 'entity',
+            'usage' => 'entity remove <project> <entity[,entity2]>',
+        ]);
+    }
+
     private function registerDeleteCommand(): void
     {
         $this->context->commands()->register('entity delete', function (array $parameters): CommandResponse {
             return $this->entityDeleteCommand($parameters);
         }, [
-            'description' => 'Archive an entity or purge it permanently.',
+            'description' => 'Delete entire entities (all versions) or targeted revisions (@version/#commit).',
             'group' => 'entity',
-            'usage' => 'entity delete <project> <entity> [purge=0]',
+            'usage' => 'entity delete <project> <entity[@version|#commit][,entity2[@version|#commit]]>',
         ]);
     }
 
@@ -235,6 +271,40 @@ final class EntityAgent
             ]);
 
             return CommandResponse::error('entity list', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function entityVersionsCommand(array $parameters): CommandResponse
+    {
+        $project = $this->extractProject($parameters, 'entity versions');
+        $entity = $this->extractEntity($parameters, 'entity versions');
+
+        if ($project === null || $entity === null) {
+            return CommandResponse::error('entity versions', 'Parameters "project" and "entity" are required.');
+        }
+
+        try {
+            $versions = $this->brains->listEntityVersions($project, $entity);
+
+            return CommandResponse::success('entity versions', [
+                'project' => $project,
+                'entity' => $entity,
+                'count' => count($versions),
+                'versions' => $versions,
+            ], sprintf('Versions for entity "%s" in project "%s".', $entity, $project));
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to list versions', [
+                'project' => $project,
+                'entity' => $entity,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('entity versions', $exception->getMessage(), [
                 'exception' => [
                     'message' => $exception->getMessage(),
                     'type' => get_class($exception),
@@ -400,39 +470,131 @@ final class EntityAgent
         }
     }
 
+    private function entityRemoveCommand(array $parameters): CommandResponse
+    {
+        $project = $this->extractProject($parameters, 'entity remove');
+        $rawEntity = $parameters['entity'] ?? null;
+        if (isset($parameters['entity_extra'])) {
+            $extras = (array) $parameters['entity_extra'];
+            $rawEntity = $rawEntity === null ? $extras : $this->combineEntitySelectors($rawEntity, $extras);
+        }
+
+        if ($project === null) {
+            return CommandResponse::error('entity remove', 'Parameters "project" and "entity" are required.');
+        }
+
+        $selectors = $this->expandEntityInputs($rawEntity);
+        if ($selectors === []) {
+            return CommandResponse::error('entity remove', 'No valid entity selectors supplied.');
+        }
+
+        $slugs = [];
+        foreach ($selectors as $selector) {
+            $slug = $selector['slug'];
+            if ($slug === null || $slug === '') {
+                continue;
+            }
+
+            if ($selector['reference'] !== null) {
+                return CommandResponse::error('entity remove', 'Removing specific versions is not supported. Use "delete <project> <entity@version>" instead.');
+            }
+
+            $slugs[$slug] = true;
+        }
+
+        if ($slugs === []) {
+            return CommandResponse::error('entity remove', 'No valid entities detected in selector.');
+        }
+
+        try {
+            $results = [];
+            foreach (\array_keys($slugs) as $slug) {
+                $results[] = $this->brains->deactivateEntity($project, $slug);
+            }
+
+            return CommandResponse::success('entity remove', [
+                'project' => $project,
+                'entities' => $results,
+            ], sprintf('Deactivated %d entit%s in project "%s".', \count($results), \count($results) === 1 ? 'y' : 'ies', $project));
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to remove entity version', [
+                'project' => $project,
+                'entity' => $rawEntity,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('entity remove', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
     private function entityDeleteCommand(array $parameters): CommandResponse
     {
         $project = $this->extractProject($parameters, 'entity delete');
-        $entity = $this->extractEntity($parameters, 'entity delete');
-        if ($project === null || $entity === null) {
+        $rawEntity = $parameters['entity'] ?? null;
+        if (isset($parameters['entity_extra'])) {
+            $extras = (array) $parameters['entity_extra'];
+            $rawEntity = $rawEntity === null ? $extras : $this->combineEntitySelectors($rawEntity, $extras);
+        }
+        if ($project === null) {
             return CommandResponse::error('entity delete', 'Parameters "project" and "entity" are required.');
         }
 
-        $purge = $this->toBool($parameters['purge'] ?? $parameters['purge_commits'] ?? false);
+        $selectors = $this->expandEntityInputs($rawEntity);
+        if ($selectors === []) {
+            return CommandResponse::error('entity delete', 'No valid entity selectors supplied.');
+        }
 
         try {
-            if ($purge) {
-                $this->brains->deleteEntity($project, $entity, true);
+            $deletedEntities = [];
+            $deletedVersions = [];
+            $entityLookup = [];
 
-                return CommandResponse::success('entity delete', [
-                    'project' => $project,
-                    'entity' => $entity,
-                    'purged' => true,
-                ], sprintf('Entity "%s" permanently deleted.', $entity));
+            foreach ($selectors as $selector) {
+                $slug = $selector['slug'];
+                if ($slug === null || $slug === '') {
+                    continue;
+                }
+
+                $reference = $selector['reference'];
+
+                if ($reference !== null && $reference !== '') {
+                    $deletedVersions[] = $this->brains->deleteEntityVersion($project, $slug, $reference);
+                    continue;
+                }
+
+                $entityLookup[$slug] = true;
             }
 
-            $summary = $this->brains->archiveEntity($project, $entity);
+            foreach (\array_keys($entityLookup) as $slug) {
+                $this->brains->deleteEntity($project, $slug, true);
+                $deletedEntities[] = [
+                    'project' => $project,
+                    'entity' => $slug,
+                    'deleted' => true,
+                ];
+            }
 
             return CommandResponse::success('entity delete', [
                 'project' => $project,
-                'entity' => $summary,
-                'purged' => false,
-            ], sprintf('Entity "%s" archived.', $entity));
+                'entities' => $deletedEntities,
+                'versions' => $deletedVersions,
+            ], sprintf(
+                'Deleted %d entit%s and %d version%s in project "%s".',
+                \count($deletedEntities),
+                \count($deletedEntities) === 1 ? 'y' : 'ies',
+                \count($deletedVersions),
+                \count($deletedVersions) === 1 ? '' : 's',
+                $project
+            ));
         } catch (Throwable $exception) {
             $this->logger->error('Failed to delete entity', [
                 'project' => $project,
-                'entity' => $entity,
-                'purge' => $purge,
+                'entity' => $rawEntity,
                 'exception' => $exception,
             ]);
 
@@ -517,6 +679,63 @@ final class EntityAgent
         }
 
         return false;
+    }
+
+    /**
+     * @return array{slug: ?string, reference: ?string}
+     */
+    private function expandEntityInputs(mixed $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+
+        $segments = [];
+
+        if (is_array($value)) {
+            foreach ($value as $entry) {
+                foreach (explode(',', (string) $entry) as $part) {
+                    $segments[] = $part;
+                }
+            }
+        } else {
+            $segments = explode(',', (string) $value);
+        }
+
+        $selectors = [];
+
+        foreach ($segments as $segment) {
+            $trimmed = trim((string) $segment);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $selector = $this->parseSelector($trimmed, false);
+            if ($selector['slug'] === null || $selector['slug'] === '') {
+                continue;
+            }
+
+            $selectors[] = $selector;
+        }
+
+        return $selectors;
+    }
+
+    private function combineEntitySelectors(mixed $base, array $extra): array
+    {
+        $values = [];
+
+        if (is_array($base)) {
+            $values = $base;
+        } elseif ($base !== null) {
+            $values[] = $base;
+        }
+
+        foreach ($extra as $entry) {
+            $values[] = $entry;
+        }
+
+        return $values;
     }
 
     /**

@@ -1,0 +1,14 @@
+{
+    "name": "Security Agent",
+    "slug": "security",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Expose security and rate limiter configuration commands.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "security.manage",
+        "logger.use"
+    ]
+}

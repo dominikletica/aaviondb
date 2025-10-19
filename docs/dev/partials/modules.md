@@ -117,10 +117,12 @@ return [
 | `ExportAgent` | system | Data exports and snapshots |
 | `AuthAgent` | system | API token lifecycle |
 | `ApiAgent` | system | REST endpoint management |
+| `CacheAgent` | system | Cache toggles, TTL, purge hooks |
 | `UiAgent` | system | Console / web UI integration |
 | `LogAgent` | system | Operational log access |
 | `EventsAgent` | system | Event bus inspection |
 | `SchedulerAgent` | system | (Future) scheduled job orchestration |
+| `SecurityAgent` | system | Rate limiting & lockdown management |
 
 ### Module Responsibilities
 - **`CoreAgent` (`core`)** – Runtime meta commands (version, diagnose, setup status)
@@ -138,12 +140,16 @@ return [
   - Coordinate with entity agent/cascade logic
 - **`EntityAgent` (`entity`)** – Entity versioning workflow
   - CRUD for entities and versions
-  - Handle canonical hashing and version history
-  - Restore/delete operations using `@version` / `#commit` selectors
+  - Handle canonical hashing, merge selectors, and schema bindings
+  - Restore/delete/remove operations using `@version` / `#commit` selectors (including targeted purges)
 - **`ConfigAgent` (`config`)** – Runtime configuration helper
   - `set`/`get` convenience commands for user/system brains
   - Supports JSON payloads and deletion via `set <key>` without value
   - Wrapper around `BrainRepository` config API
+- **`CacheAgent` (`cache`)** – Cache subsystem controls
+  - Toggle caching on/off, adjust default TTL, and inspect cache statistics
+  - Manual purges for entire cache, specific keys, or tag-filtered subsets
+  - Built on top of `CacheManager` (auto flushes after brain writes)
 - **`SchemaAgent` (`schema`)** – Fieldset management & validation
   - List schemas stored in the `fieldsets` project
   - Inspect specific schema revisions via `@version`/`#commit`
@@ -172,10 +178,13 @@ return [
   - List listeners & emitted events
   - Subscribe modules for instrumentation
   - Diagnostics for module telemetry and live feed endpoints
-- **`SchedulerAgent` (`scheduler`)** – (Future) scheduled job orchestration
-  - Define scheduled command hooks
-  - Integrate with cron/queue backends
-  - Emit scheduler diagnostics
+- **`SchedulerAgent` (`scheduler`)** – Scheduled job orchestration
+  - Manage scheduler tasks (`scheduler add/edit/remove/list/log`)
+  - Execute queued commands via `cron` (REST/CLI, optional `--keep` cleanup integration)
+  - TODO: extended retention policies, custom runners
+- **`SecurityAgent` (`security`)** – Rate limiting & lockdown management
+  - Control security toggles, manual lockdowns, and purge cached counters/blocks
+  - REST enforcement via `SecurityManager` (per-client/global/failure buckets + `Retry-After` headers)
 
 > Implementation TODOs are tracked centrally in `.codex/NOTES.md`.
 
@@ -185,6 +194,7 @@ return [
 - [`modules/project.md`](./modules/project.md) – ProjectAgent
 - [`modules/entity.md`](./modules/entity.md) – EntityAgent
 - [`modules/config.md`](./modules/config.md) – ConfigAgent
+- [`modules/cache.md`](./modules/cache.md) – CacheAgent
 - [`modules/schema.md`](./modules/schema.md) – SchemaAgent
 - [`modules/export.md`](./modules/export.md) – ExportAgent
 - [`modules/auth.md`](./modules/auth.md) – AuthAgent
@@ -193,6 +203,7 @@ return [
 - [`modules/log.md`](./modules/log.md) – LogAgent
 - [`modules/events.md`](./modules/events.md) – EventsAgent *(draft)*
 - [`modules/scheduler.md`](./modules/scheduler.md) – SchedulerAgent *(draft)*
+- [`modules/security.md`](./modules/security.md) – SecurityAgent
 
 ## Future Work
 - Expand capability matrix (granular read/write separation, filesystem/network access) and introduce policy configuration per deployment.  

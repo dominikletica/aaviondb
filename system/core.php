@@ -8,10 +8,12 @@ use AavionDB\Core\Bootstrap;
 use AavionDB\Core\CommandParser;
 use AavionDB\Core\CommandRegistry;
 use AavionDB\Core\CommandResponse;
+use AavionDB\Core\Cache\CacheManager;
 use AavionDB\Core\EventBus;
 use AavionDB\Core\Exceptions\CommandException;
 use AavionDB\Core\RuntimeState;
 use AavionDB\Core\Security\AuthManager;
+use AavionDB\Core\Security\SecurityManager;
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 
@@ -253,6 +255,19 @@ final class AavionDB
     }
 
     /**
+     * Returns the cache manager service.
+     */
+    public static function cache(): CacheManager
+    {
+        self::assertBooted();
+
+        /** @var CacheManager $cache */
+        $cache = self::$state->container()->get(CacheManager::class);
+
+        return $cache;
+    }
+
+    /**
      * Returns the framework logger instance.
      */
     public static function logger(): LoggerInterface
@@ -276,6 +291,19 @@ final class AavionDB
         $auth = self::$state->container()->get(AuthManager::class);
 
         return $auth;
+    }
+
+    /**
+     * Returns the security manager.
+     */
+    public static function security(): SecurityManager
+    {
+        self::assertBooted();
+
+        /** @var SecurityManager $security */
+        $security = self::$state->container()->get(SecurityManager::class);
+
+        return $security;
     }
 
     /**

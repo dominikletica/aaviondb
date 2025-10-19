@@ -20,74 +20,109 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 - **Export functionality** – Create JSON-based slices for integration with tools like ChatGPT or other LLMs.  
   These parser-friendly files act as contextual datasets for AI tools that can’t natively store large amounts of structured data.
 
-## 🧩 Planned Command Overview
+## 🧩 Command Overview
 
-### Core Commands
+### Core & Diagnostics
 | Command | Description |
 |----------|-------------|
-| `list projects` | Returns a list of all valid projects. |
-| `list entities {project}` | Lists all valid entities within the specified project. |
-| `list versions {project} {entity}` | Lists all versions of an entity. |
-| `list commits {project} [entity]` | Returns all commits for a project (or a specific entity). |
-| `show {entity}` | Displays the currently active version of an entity as structured JSON. |
-| `show {entity(@version or #hash)}` | Displays a specific version or commit of the entity. |
-| `save {project} {entity} {full JSON}` | Saves an entity. If an ID exists, creates a new version and commit; otherwise creates a new entity. Returns version and deterministic commit hash. |
-| `project list` | Lists all projects with metadata summaries. |
-| `project create <slug> [title="My Project"] [description="Context"]` | Creates a new project with optional metadata for LLM guidance. |
-| `project update <slug> [title="New Title"] [description="Updated context"]` | Updates project metadata without altering entities. |
-| `project remove <slug>` | Archives a project (soft delete). |
-| `project delete <slug> [purge_commits=1]` | Permanently deletes a project (optionally purging associated commits). |
-| `project info <slug>` | Displays a project snapshot including entity counts. |
+| `status` | Show a concise runtime snapshot (version, brains, modules). |
+| `diagnose` | Output detailed diagnostics (paths, container, modules, brains). |
+| `help [command]` | List available commands or show details for a specific one. |
 
-### Export Commands
+### Listing & Entity Lifecycle
 | Command | Description |
 |----------|-------------|
-| `export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="How to use this export"] [usage="LLM guidance"]` | Generates JSON exports (full payloads) for one or more projects (comma-separated) or all projects with `*`, optionally narrowing the slice and providing per-export guidance. Presets can be referenced via `export myproject:mypreset`. |
+| `list projects` / `project list` | List all projects in the active brain. |
+| `list entities <project>` / `entity list <project>` | List entities belonging to a project. |
+| `list versions <project> <entity>` / `entity versions <project> <entity>` | Enumerate versions for an entity. |
+| `list commits <project> [entity] [limit=50]` / `project commits …` | Show recent commits (optionally filtered by entity). |
+| `show <project> <entity[@version|#commit]>` / `entity show …` | Render the active or selected entity version as JSON. |
+| `save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {payload}` / `entity save …` | Create or merge a new entity version (supports partial payload updates and schema selectors). |
+| `remove <project> <entity[,entity2]>` / `entity remove …` | Deactivate the active version(s) without purging history. |
+| `delete <project> <entity[,entity2]>` / `entity delete …` | Permanently delete entities (all versions and commits). |
+| `delete <project> <entity@version[,entity2#commit]>` | Remove specific versions or commits without deleting the entity. |
+| `restore <project> <entity> <@version|#commit>` / `entity restore …` | Reactivate an archived version. |
 
----
-
-### Simple Key-Value Storage
+### Project Management
 | Command | Description |
 |----------|-------------|
-| `set {key} {value}` / `get {key}` | Store and retrieve basic configuration values. |
-| `get` | Lists all existing keys. *(These values are not versioned.)* |
-
----
+| `project create <slug> [title="..."] [description="..."]` | Create a project with optional metadata. |
+| `project update <slug> [title="..."] [description="..."]` | Update project title/description. |
+| `project remove <slug>` | Archive (soft delete) a project. |
+| `project delete <slug> [purge_commits=1]` | Permanently delete a project (optionally purge commit history). |
+| `project info <slug>` | Display project summary and statistics. |
 
 ### Brain Management
 | Command | Description |
 |----------|-------------|
-| `brains` | Lists all available databases (“brains”). |
-| `init {brain}` | Initializes or activates a brain (only one can be active at a time). |
-| `backup {brain}` | Creates a snapshot of the active brain with timestamp. |
-| `delete {brain}` | Permanently removes a brain. *(Use with extreme caution!)* |
+| `brains` | List all available brains (system + user). |
+| `brain init <slug> [switch=1]` | Create a new user brain and optionally activate it. |
+| `brain switch <slug>` | Switch the active brain. |
+| `brain backup [slug] [label=name]` | Create a backup for the specified (or active) brain. |
+| `brain info [slug]` | Show metadata for the active or specified brain. |
+| `brain validate [slug]` | Run integrity diagnostics. |
+| `brain delete <slug>` | Permanently delete a non-active brain. |
+| `brain cleanup <project> [entity] [keep=0]` | Purge inactive versions, optionally preserving the newest `keep` versions. |
 
----
-
-### API Commands
+### Export Commands
 | Command | Description |
 |----------|-------------|
-| `api serve` | Enables the REST API once at least one scoped token exists. |
-| `api stop` | Disables the REST API (idempotent). |
-| `api status` | Prints REST API telemetry (enabled flag, token counts, last activity). |
-| `api reset` | Disables REST and revokes all issued API tokens. |
+| `export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="..."] [usage="..."] [preset]` | Generate deterministic JSON exports for one or multiple projects/entities (supports presets and guidance fields). |
 
----
-
-### Authentication Commands
+### Configuration & Key-Value Store
 | Command | Description |
 |----------|-------------|
-| `auth grant` | Generates a new alphanumeric API key (16 characters). |
-| `auth revoke {key}` | Invalidates the given API key. |
+| `set <key> [value] [--system]` | Store or delete a config entry (JSON payloads supported; omitting `value` deletes the key). |
+| `get [key] [--system]` | Retrieve a config value or list all entries. |
 
----
-
-### Miscellaneous
+### Authentication
 | Command | Description |
 |----------|-------------|
-| `help` | Lists all available commands and usage syntax. |
-| `status` / `info` | Displays framework version, memory usage, author info, GitHub link, and active brain. |
-| `log [level] [limit]` | Tails `aaviondb.log` with filters (`ERROR`, `AUTH`, `DEBUG`, `ALL`) and limit (default 10). |
+| `auth grant [label="..."] [projects=...]` | Issue a scoped API token (default scope `*`). |
+| `auth list` | List existing tokens with metadata. |
+| `auth revoke <token|preview>` | Revoke a token via full value or preview. |
+| `auth reset` | Reset authentication state to bootstrap defaults. |
+
+### REST API Control
+| Command | Description |
+|----------|-------------|
+| `api serve` | Enable the REST API (requires at least one non-bootstrap token). |
+| `api stop` | Disable the REST API (idempotent). |
+| `api status` | Display REST telemetry (enabled flag, last request, token counts). |
+| `api reset` | Disable REST and revoke all tokens. |
+
+### Scheduler & Cron
+| Command | Description |
+|----------|-------------|
+| `scheduler add <slug> <command>` | Register a scheduled CLI command. |
+| `scheduler edit <slug> <command>` | Update a stored command. |
+| `scheduler list` | List scheduler tasks. |
+| `scheduler log [limit=20]` | Show recent scheduler runs. |
+| `scheduler remove <slug>` | Delete a scheduled task. |
+| `cron` | Execute all scheduled tasks (available via CLI and REST without authentication). |
+
+### Cache Management
+| Command | Description |
+|----------|-------------|
+| `cache status` | Show cache enablement, TTL, directory, and entry counts (removes expired artefacts). |
+| `cache enable` | Enable caching globally. |
+| `cache disable` | Disable caching and flush artefacts. |
+| `cache ttl <seconds>` | Update the default TTL. |
+| `cache purge [key=...] [tag=a,b]` | Purge cache entries (global, per key, or filtered by tags). |
+
+### Security & Rate Limiting
+| Command | Description |
+|----------|-------------|
+| `security config` / `security status` | Display security configuration and lockdown state. |
+| `security enable` | Enable rate limiting enforcement. |
+| `security disable` | Disable enforcement and purge cached counters/blocks. |
+| `security lockdown [seconds]` | Trigger a manual lockdown (defaults to configured duration). |
+| `security purge` | Remove cached security artefacts. |
+
+### Logging
+| Command | Description |
+|----------|-------------|
+| `log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]` | Tail the framework log with optional level and limit filters. |
 
 Commands can be invoked universally across interfaces:
 
@@ -135,6 +170,8 @@ More commands will be documented as development progresses.
   - `backups_path`, `exports_path`, `log_path` — Override storage locations (relative paths resolve from the repo root).
   - `response_exports` / `save_exports` — Control whether export commands return JSON in the response and/or persist files to disk.
   - `api_key_length` — Length of generated API keys (default 16).
+  - `cache.active`, `cache.ttl` — Stored in the system brain; manage via `cache` commands or `set cache.* --system=1`.
+  - `security.active`, `security.rate_limit`, `security.global_limit`, `security.block_duration`, `security.ddos_lockdown`, `security.failed_limit`, `security.failed_block` — Rate limiter defaults (tweak with `security` commands or `set security.* --system=1`).
 - If `config.php` is missing, the built-in defaults are used and the admin secret remains disabled (empty string).
 
 ### REST API

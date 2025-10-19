@@ -108,4 +108,6 @@
 - [`CHANGELOG.md`](../../CHANGELOG.md) – release notes  
 - [`.codex/NOTES.md`](../../.codex/NOTES.md) – development log  
 - [`README.md`](../../README.md) – user-facing overview  
+- [`docs/dev/commands.md`](./commands.md) – consolidated command reference  
+- [`docs/dev/classmap.md`](./classmap.md) – class/method overview for quick lookup  
 - `/LICENSE`

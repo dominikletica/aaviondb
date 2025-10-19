@@ -10,6 +10,9 @@ use AavionDB\Core\ParserContext;
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use Throwable;
+use function in_array;
+use function sprintf;
+use function strpos;
 use function strtolower;
 use function trim;
 use function str_starts_with;
@@ -38,6 +41,8 @@ final class BrainAgent
         $this->registerBrainBackupCommand();
         $this->registerBrainInfoCommand();
         $this->registerBrainValidateCommand();
+        $this->registerBrainDeleteCommand();
+        $this->registerBrainCleanupCommand();
     }
 
     private function registerParser(): void
@@ -55,51 +60,65 @@ final class BrainAgent
             switch ($sub) {
                 case 'init':
                     $context->setAction('brain init');
-                    $this->injectParameters($context, $tokens, true);
-                    return;
+                    break;
                 case 'switch':
                     $context->setAction('brain switch');
-                    $this->injectParameters($context, $tokens, true);
-                    return;
+                    break;
                 case 'backup':
                     $context->setAction('brain backup');
-                    $this->injectParameters($context, $tokens, false);
-                    return;
+                    break;
                 case 'info':
                     $context->setAction('brain info');
-                    $this->injectParameters($context, $tokens, false);
-                    return;
+                    break;
                 case 'validate':
                     $context->setAction('brain validate');
-                    $this->injectParameters($context, $tokens, false);
-                    return;
+                    break;
+                case 'delete':
+                    $context->setAction('brain delete');
+                    break;
+                case 'cleanup':
+                    $context->setAction('brain cleanup');
+                    break;
                 case 'list':
                     $context->setAction('brains');
-                    $this->injectParameters($context, $tokens, false);
-                    return;
+                    break;
                 default:
-                    // Fallback: treat unknown subcommand as info lookup
                     array_unshift($tokens, $sub);
                     $context->setAction('brain info');
-                    $this->injectParameters($context, $tokens, false);
-                    return;
+                    break;
             }
+
+            $this->injectParameters($context, $tokens, $context->action());
+            return;
         }, 10);
     }
 
-    private function injectParameters(ParserContext $context, array $tokens, bool $expectSlug): void
+    private function injectParameters(ParserContext $context, array $tokens, string $action): void
     {
         $parameters = [];
+
+        $expectSlug = in_array($action, ['brain init', 'brain switch', 'brain backup', 'brain info', 'brain validate', 'brain delete'], true);
 
         if ($expectSlug && $tokens !== []) {
             $first = $tokens[0];
             if (!str_starts_with($first, '--') && strpos($first, '=') === false) {
                 $parameters['slug'] = array_shift($tokens);
             }
-        } elseif (!$expectSlug && $tokens !== []) {
-            $first = $tokens[0];
-            if (!str_starts_with($first, '--') && strpos($first, '=') === false) {
-                $parameters['slug'] = array_shift($tokens);
+        }
+
+        if ($action === 'brain cleanup') {
+            if ($tokens !== []) {
+                $first = $tokens[0];
+                if (!str_starts_with($first, '--') && strpos($first, '=') === false) {
+                    $parameters['project'] = array_shift($tokens);
+                }
+            }
+
+            if ($tokens !== []) {
+                $next = $tokens[0];
+                if (!str_starts_with($next, '--') && strpos($next, '=') === false) {
+                    $parameters['entity'] = array_shift($tokens);
+                }
             }
         }
 
@@ -196,6 +215,28 @@ final class BrainAgent
             'description' => 'Run integrity diagnostics for a brain.',
             'group' => 'brain',
             'usage' => 'brain validate [slug]',
+        ]);
+    }
+
+    private function registerBrainDeleteCommand(): void
+    {
+        $this->context->commands()->register('brain delete', function (array $parameters): CommandResponse {
+            return $this->brainDeleteCommand($parameters);
+        }, [
+            'description' => 'Permanently delete a brain (cannot be active).',
+            'group' => 'brain',
+            'usage' => 'brain delete <slug>',
+        ]);
+    }
+
+    private function registerBrainCleanupCommand(): void
+    {
+        $this->context->commands()->register('brain cleanup', function (array $parameters): CommandResponse {
+            return $this->brainCleanupCommand($parameters);
+        }, [
+            'description' => 'Purge inactive versions for a project (optional entity filter).',
+            'group' => 'brain',
+            'usage' => 'brain cleanup <project> [entity]',
         ]);
     }
 
@@ -359,6 +400,75 @@ final class BrainAgent
             ]);
 
             return CommandResponse::error('brain validate', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function brainDeleteCommand(array $parameters): CommandResponse
+    {
+        $slug = isset($parameters['slug']) ? strtolower(trim((string) $parameters['slug'])) : '';
+        if ($slug === '') {
+            return CommandResponse::error('brain delete', 'Parameter "slug" is required.');
+        }
+
+        try {
+            $result = $this->brains->deleteBrain($slug);
+
+            return CommandResponse::success('brain delete', $result, sprintf('Brain "%s" deleted.', $slug));
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to delete brain', [
+                'slug' => $slug,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('brain delete', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function brainCleanupCommand(array $parameters): CommandResponse
+    {
+        $project = isset($parameters['project']) ? strtolower(trim((string) $parameters['project'])) : '';
+        if ($project === '') {
+            return CommandResponse::error('brain cleanup', 'Parameter "project" is required.');
+        }
+
+        $entity = isset($parameters['entity']) ? strtolower(trim((string) $parameters['entity'])) : null;
+        if ($entity === '') {
+            $entity = null;
+        }
+
+        $keep = 0;
+        if (isset($parameters['keep']) && (is_numeric($parameters['keep']) || is_string($parameters['keep']))) {
+            $keep = max(0, (int) $parameters['keep']);
+        }
+
+        try {
+            $result = $this->brains->purgeInactiveEntityVersions($project, $entity, $keep);
+
+            return CommandResponse::success('brain cleanup', $result, sprintf(
+                'Purged %d inactive version%s for project "%s"%s.',
+                $result['removed_versions'] ?? 0,
+                ($result['removed_versions'] ?? 0) === 1 ? '' : 's',
+                $project,
+                $entity !== null ? sprintf(' (entity "%s")', $entity) : ''
+            ));
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to cleanup brain versions', [
+                'project' => $project,
+                'entity' => $entity,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('brain cleanup', $exception->getMessage(), [
                 'exception' => [
                     'message' => $exception->getMessage(),
                     'type' => get_class($exception),

@@ -14,10 +14,11 @@
 - `brain backup [slug] [label=name]` – Create a timestamped backup copy in `user/backups/`.
 - `brain info [slug]` – Return detailed information for the requested brain (defaults to active brain).
 - `brain validate [slug]` – Run integrity diagnostics (checksum, last write/failure metadata).
-- *(Planned)* `brain cleanup [slug] [project]` – Purge inactive versions on explicit request.
+- `brain delete <slug>` – Permanently delete a non-active user brain.
+- `brain cleanup <project> [entity] [keep=0]` – Purge inactive versions for the given project (optional entity scope, preserve the most recent `keep` versions).
 
 ## Implementation Notes
-- Module lives in `system/modules/brain` and leverages new helpers in `BrainRepository` (`listBrains`, `createBrain`, `setActiveBrain`, `backupBrain`, `brainReport`, `integrityReportFor`).
+- Module lives in `system/modules/brain` and leverages helpers in `BrainRepository` (`listBrains`, `createBrain`, `setActiveBrain`, `backupBrain`, `deleteBrain`, `brainReport`, `integrityReportFor`, `purgeInactiveEntityVersions`). The cleanup command now honours a `keep` threshold to retain the most recent versions.
 
 ## Examples
 
@@ -60,5 +61,5 @@ $response = AavionDB::run('brain validate', ['slug' => 'default']);
 - Diagnostics include footprint metrics (bytes + entity-version count) consumed by CoreAgent `status`.
 
 ## Outstanding Tasks
-- [ ] Implement `brain cleanup` command (brain/project scope) once removal semantics are finalised.
-- [ ] Add PHPUnit coverage for brain lifecycle + backup edge cases.
+- [ ] Extend cleanup with retention policies / dry-run previews.
+- [ ] Add PHPUnit coverage for brain lifecycle, deletion, and cleanup edge cases.

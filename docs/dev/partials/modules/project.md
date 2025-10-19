@@ -7,16 +7,16 @@
 - Coordinate metadata changes that affect entity indexing and counts.
 - Provide foundation for future cascade operations with `EntityAgent`.
 
-## Commands
-- `project list` – List projects with status, timestamps, entity counts, version counts.
+- `list projects` ↔ `project list` – List projects with status, timestamps, entity/versions counts.
 - `project create <slug> [title="My Project"] [description="Context for LLMs"]` – Create a new project (fails if slug exists).
 - `project update <slug> [title="New Title"] [description="Updated guidance"]` – Revise project metadata without touching entities.
 - `project remove <slug>` – Archive project (soft delete) while keeping entities in place.
 - `project delete <slug> [purge_commits=1]` – Hard delete project and optionally purge related commits.
 - `project info <slug>` – Show detailed project snapshot (summary + entity listing).
+- `list commits <project> [entity] [limit=50]` ↔ `project commits …` – List commit metadata for a project (optional entity scope, default 50 entries).
 
 ## Implementation Notes
-- Resides in `system/modules/project` and leverages `BrainRepository` helpers (`createProject`, `archiveProject`, `deleteProject`, `projectReport`).
+- Resides in `system/modules/project` and leverages `BrainRepository` helpers (`createProject`, `archiveProject`, `deleteProject`, `projectReport`, `listProjectCommits`).
 - Parser rewrites `project ...` commands into structured actions and extracts `slug`, `title`, `description`, `purge_commits` flags.
 - Soft delete updates status to `archived`; hard delete removes project entry and (optionally) associated commits.
 - `BrainRepository` persists title/description metadata (`createProject`, `updateProjectMetadata`) so exports and LLM guides can surface author-provided context.
@@ -64,5 +64,5 @@ $response = AavionDB::run('project list');
 
 ## Outstanding Tasks
 - [ ] Coordinate with `EntityAgent` for optional cascade operations (e.g. archiving entities on project removal).
-- [ ] Implement `project cleanup` if we later add automatic purging for archived entities.
+- [ ] Provide optional cascade behaviour (e.g. clean up archived entities/projects automatically once business rules are defined).
 - [ ] Add PHPUnit coverage for lifecycle and failure scenarios.

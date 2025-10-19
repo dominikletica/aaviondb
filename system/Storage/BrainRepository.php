@@ -13,17 +13,23 @@ use AavionDB\Core\Hashing\CanonicalJson;
 use AavionDB\Schema\SchemaException;
 use AavionDB\Schema\SchemaValidator;
 use Ramsey\Uuid\Uuid;
-use function in_array;
-use function strtolower;
-use function trim;
-use function array_values;
 use function array_filter;
 use function array_key_exists;
+use function array_keys;
+use function array_slice;
+use function array_reverse;
+use function array_values;
+use function in_array;
 use function is_array;
-use function is_string;
 use function is_bool;
 use function is_numeric;
+use function is_string;
+use function ksort;
+use function krsort;
 use function sprintf;
+use function strtolower;
+use function trim;
+use function usort;
 
 /**
  * Manages lifecycle and persistence of system and user brain files.
@@ -218,6 +224,54 @@ final class BrainRepository
                 'committed_at' => $record['committed_at'] ?? null,
             ];
         }
+
+        return $result;
+    }
+
+    public function listProjectCommits(string $projectSlug, ?string $entitySlug = null): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertReadAllowed($slugProject);
+
+        $brain = $this->loadActiveBrain();
+        $commits = isset($brain['commits']) && \is_array($brain['commits']) ? $brain['commits'] : [];
+
+        $filterEntity = $entitySlug !== null ? $this->normalizeKey($entitySlug) : null;
+        $result = [];
+
+        foreach ($commits as $hash => $commit) {
+            if (!\is_array($commit)) {
+                continue;
+            }
+
+            if (($commit['project'] ?? null) !== $slugProject) {
+                continue;
+            }
+
+            $commitEntity = isset($commit['entity']) ? $this->normalizeKey((string) $commit['entity']) : null;
+            if ($filterEntity !== null && $commitEntity !== $filterEntity) {
+                continue;
+            }
+
+            $result[] = [
+                'commit' => $hash,
+                'entity' => $commit['entity'] ?? null,
+                'version' => $commit['version'] ?? null,
+                'hash' => $commit['hash'] ?? null,
+                'timestamp' => $commit['timestamp'] ?? null,
+                'merge' => $commit['merge'] ?? null,
+                'fieldset' => $commit['fieldset'] ?? null,
+                'source_reference' => $commit['source_reference'] ?? null,
+                'fieldset_reference' => $commit['fieldset_reference'] ?? null,
+            ];
+        }
+
+        usort($result, static function (array $left, array $right): int {
+            $leftTime = $left['timestamp'] ?? '';
+            $rightTime = $right['timestamp'] ?? '';
+
+            return \strcmp((string) $rightTime, (string) $leftTime);
+        });
 
         return $result;
     }
@@ -493,6 +547,297 @@ final class BrainRepository
             'entity' => $slugEntity,
             'purged_commits' => $purgeCommits,
         ]);
+    }
+
+    public function deleteBrain(string $slug): array
+    {
+        $normalized = $this->normalizeKey($slug);
+
+        if ($normalized === 'system') {
+            throw new StorageException('System brain cannot be deleted.');
+        }
+
+        $active = $this->activeBrain();
+        if ($active === $normalized) {
+            throw new StorageException('Cannot delete the active brain. Switch to a different brain first.');
+        }
+
+        $path = $this->paths->userBrain($normalized);
+        if (!\is_file($path)) {
+            throw new StorageException(sprintf('Brain "%s" does not exist.', $slug));
+        }
+
+        if (!@\unlink($path)) {
+            throw new StorageException(sprintf('Unable to delete brain "%s".', $slug));
+        }
+
+        $this->events->emit('brain.deleted', [
+            'slug' => $normalized,
+            'path' => $path,
+        ]);
+
+        return [
+            'slug' => $normalized,
+            'path' => $path,
+            'deleted' => true,
+        ];
+    }
+
+    public function deactivateEntity(string $projectSlug, string $entitySlug): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slugProject);
+        $slugEntity = $this->normalizeKey($entitySlug);
+
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $entity = &$brain['projects'][$slugProject]['entities'][$slugEntity];
+        $activeVersion = $entity['active_version'] ?? null;
+
+        if ($activeVersion === null || !isset($entity['versions'][$activeVersion])) {
+            throw new StorageException(sprintf('Entity "%s" in project "%s" does not have an active version.', $entitySlug, $projectSlug));
+        }
+
+        $timestamp = $this->timestamp();
+        $entity['versions'][$activeVersion]['status'] = 'inactive';
+        $entity['active_version'] = null;
+        $entity['status'] = 'inactive';
+        $entity['updated_at'] = $timestamp;
+
+        $brain['projects'][$slugProject]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.deactivated', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => $activeVersion,
+        ]);
+
+        return $this->entityReport($slugProject, $slugEntity, true);
+    }
+
+    public function deleteEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slugProject);
+        $slugEntity = $this->normalizeKey($entitySlug);
+
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $entity = &$brain['projects'][$slugProject]['entities'][$slugEntity];
+        $versionKey = $this->resolveEntityVersionKey($brain, $slugProject, $slugEntity, $entity, $reference);
+
+        if ($versionKey === null) {
+            throw new StorageException(sprintf('Unknown entity reference "%s".', $reference));
+        }
+
+        $record = $entity['versions'][$versionKey] ?? null;
+        unset($entity['versions'][$versionKey]);
+
+        if (is_array($record) && isset($record['commit']) && is_string($record['commit'])) {
+            unset($brain['commits'][$record['commit']]);
+        } else {
+            foreach ($brain['commits'] ?? [] as $hash => $commit) {
+                if (!is_array($commit)) {
+                    continue;
+                }
+
+                if (($commit['project'] ?? null) === $slugProject
+                    && ($commit['entity'] ?? null) === $slugEntity
+                    && ($commit['version'] ?? null) === (string) $versionKey) {
+                    unset($brain['commits'][$hash]);
+                }
+            }
+        }
+
+        $activeChanged = ($entity['active_version'] ?? null) === $versionKey;
+
+        if ($activeChanged) {
+            $entity['active_version'] = null;
+
+            if ($entity['versions'] !== []) {
+                $keys = array_keys($entity['versions']);
+                \rsort($keys, SORT_NUMERIC);
+
+                foreach ($keys as $key) {
+                    if (!isset($entity['versions'][$key])) {
+                        continue;
+                    }
+
+                    $entity['active_version'] = (string) $key;
+                    $entity['versions'][$key]['status'] = 'active';
+                    break;
+                }
+
+                foreach ($entity['versions'] as $key => &$candidate) {
+                    if ((string) $key !== ($entity['active_version'] ?? '')) {
+                        $candidate['status'] = 'inactive';
+                    }
+                }
+                unset($candidate);
+            } else {
+                $entity['status'] = 'inactive';
+            }
+        }
+
+        $timestamp = $this->timestamp();
+        $entity['updated_at'] = $timestamp;
+        $brain['projects'][$slugProject]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.version.deleted', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => $versionKey,
+            'reference' => $reference,
+        ]);
+
+        return [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => (string) $versionKey,
+            'reference' => $reference,
+            'active_version' => $entity['active_version'] ?? null,
+            'version_count' => \count($entity['versions'] ?? []),
+        ];
+    }
+
+    public function purgeInactiveEntityVersions(string $projectSlug, ?string $entitySlug = null, int $keep = 0): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slugProject);
+
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slugProject]) || !is_array($brain['projects'][$slugProject])) {
+            throw new StorageException(sprintf('Project "%s" not found in active brain.', $projectSlug));
+        }
+
+        $entities = &$brain['projects'][$slugProject]['entities'];
+
+        if (!is_array($entities)) {
+            $entities = [];
+        }
+
+        $targets = [];
+
+        if ($entitySlug !== null) {
+            $slugEntity = $this->normalizeKey($entitySlug);
+            if (!isset($entities[$slugEntity]) || !is_array($entities[$slugEntity])) {
+                throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+            }
+            $targets[$slugEntity] = &$entities[$slugEntity];
+        } else {
+            foreach ($entities as $slug => &$entity) {
+                if (!is_array($entity)) {
+                    continue;
+                }
+                $targets[$slug] = &$entity;
+            }
+            unset($entity);
+        }
+
+        $timestamp = $this->timestamp();
+        $removedTotal = 0;
+        $details = [];
+
+        $keep = max(0, $keep);
+
+        foreach ($targets as $slug => &$entity) {
+            if (!isset($entity['versions']) || !is_array($entity['versions'])) {
+                continue;
+            }
+
+            $initial = \count($entity['versions']);
+            $removedForEntity = 0;
+
+            $allowed = [];
+            if ($keep > 0) {
+                $versionKeys = array_keys($entity['versions']);
+                \rsort($versionKeys, SORT_NUMERIC);
+                $allowed = array_map('strval', array_slice($versionKeys, 0, $keep));
+            }
+
+            foreach ($entity['versions'] as $key => $record) {
+                $keyStr = (string) $key;
+                $status = $record['status'] ?? 'inactive';
+
+                if ($keep > 0 && in_array($keyStr, $allowed, true)) {
+                    continue;
+                }
+
+                if ($status === 'active') {
+                    $allowed[] = $keyStr;
+                    continue;
+                }
+
+                if (isset($record['commit']) && is_string($record['commit'])) {
+                    unset($brain['commits'][$record['commit']]);
+                } else {
+                    foreach ($brain['commits'] ?? [] as $hash => $commitMeta) {
+                        if (!is_array($commitMeta)) {
+                            continue;
+                        }
+
+                        if (($commitMeta['project'] ?? null) === $slugProject
+                            && ($commitMeta['entity'] ?? null) === $slug
+                            && ($commitMeta['version'] ?? null) === (string) $key) {
+                            unset($brain['commits'][$hash]);
+                        }
+                    }
+                }
+
+                unset($entity['versions'][$key]);
+                ++$removedForEntity;
+            }
+
+            if ($removedForEntity > 0) {
+                $removedTotal += $removedForEntity;
+                $details[] = [
+                    'entity' => $slug,
+                    'removed_versions' => $removedForEntity,
+                    'remaining_versions' => \count($entity['versions']),
+                ];
+                $entity['updated_at'] = $timestamp;
+            }
+        }
+        unset($entity);
+
+        if ($removedTotal > 0) {
+            $brain['projects'][$slugProject]['updated_at'] = $timestamp;
+            $brain['meta']['updated_at'] = $timestamp;
+            $this->activeBrainData = $brain;
+            $this->persistActiveBrain();
+
+            $this->events->emit('brain.entity.cleanup', [
+                'project' => $slugProject,
+                'entity' => $entitySlug !== null ? $this->normalizeKey($entitySlug) : null,
+                'removed_versions' => $removedTotal,
+                'keep' => $keep,
+            ]);
+        }
+
+        return [
+            'project' => $slugProject,
+            'entity' => $entitySlug !== null ? $this->normalizeKey($entitySlug) : null,
+            'removed_versions' => $removedTotal,
+            'keep' => $keep,
+            'details' => $details,
+        ];
     }
 
     public function restoreEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
@@ -915,6 +1260,200 @@ final class BrainRepository
         }
 
         return $brain['config'];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listSchedulerTasks(): array
+    {
+        $brain = $this->loadSystemBrain();
+        $tasks = $brain['scheduler']['tasks'] ?? [];
+
+        if (!\is_array($tasks)) {
+            return [];
+        }
+
+        ksort($tasks);
+
+        $result = [];
+        foreach ($tasks as $slug => $task) {
+            if (!\is_array($task)) {
+                continue;
+            }
+
+            $task['slug'] = $slug;
+            $result[] = $task;
+        }
+
+        return $result;
+    }
+
+    public function getSchedulerTask(string $slug): ?array
+    {
+        $normalized = $this->normalizeKey($slug);
+        $brain = $this->loadSystemBrain();
+
+        $task = $brain['scheduler']['tasks'][$normalized] ?? null;
+
+        if (!\is_array($task)) {
+            return null;
+        }
+
+        $task['slug'] = $normalized;
+
+        return $task;
+    }
+
+    public function createSchedulerTask(string $slug, string $command): array
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            throw new StorageException('Scheduler task slug must not be empty.');
+        }
+
+        $command = trim($command);
+        if ($command === '') {
+            throw new StorageException('Scheduler command must not be empty.');
+        }
+
+        $timestamp = $this->timestamp();
+        $record = null;
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized, $command, $timestamp, &$record): void {
+            if (!isset($brain['scheduler']) || !\is_array($brain['scheduler'])) {
+                $brain['scheduler'] = [];
+            }
+
+            if (!isset($brain['scheduler']['tasks']) || !\is_array($brain['scheduler']['tasks'])) {
+                $brain['scheduler']['tasks'] = [];
+            }
+
+            if (isset($brain['scheduler']['tasks'][$normalized])) {
+                throw new StorageException(sprintf('Scheduler task "%s" already exists.', $normalized));
+            }
+
+            $record = [
+                'slug' => $normalized,
+                'command' => $command,
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+                'last_run_at' => null,
+                'last_status' => null,
+                'last_message' => null,
+            ];
+
+            $brain['scheduler']['tasks'][$normalized] = $record;
+        });
+
+        return $record ?? [];
+    }
+
+    public function updateSchedulerTask(string $slug, string $command): array
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            throw new StorageException('Scheduler task slug must not be empty.');
+        }
+
+        $command = trim($command);
+        if ($command === '') {
+            throw new StorageException('Scheduler command must not be empty.');
+        }
+
+        $timestamp = $this->timestamp();
+        $record = null;
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized, $command, $timestamp, &$record): void {
+            if (!isset($brain['scheduler']['tasks'][$normalized]) || !\is_array($brain['scheduler']['tasks'][$normalized])) {
+                throw new StorageException(sprintf('Scheduler task "%s" does not exist.', $normalized));
+            }
+
+            $task = $brain['scheduler']['tasks'][$normalized];
+            $task['command'] = $command;
+            $task['updated_at'] = $timestamp;
+            $brain['scheduler']['tasks'][$normalized] = $task;
+            $record = $task;
+        });
+
+        $record['slug'] = $normalized;
+
+        return $record;
+    }
+
+    public function deleteSchedulerTask(string $slug): void
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            throw new StorageException('Scheduler task slug must not be empty.');
+        }
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized): void {
+            if (!isset($brain['scheduler']['tasks'][$normalized])) {
+                throw new StorageException(sprintf('Scheduler task "%s" does not exist.', $normalized));
+            }
+
+            unset($brain['scheduler']['tasks'][$normalized]);
+        });
+    }
+
+    public function updateSchedulerTaskRun(string $slug, string $status, string $timestamp, ?string $message = null): void
+    {
+        $normalized = $this->normalizeKey($slug);
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized, $status, $timestamp, $message): void {
+            if (!isset($brain['scheduler']['tasks'][$normalized]) || !\is_array($brain['scheduler']['tasks'][$normalized])) {
+                return;
+            }
+
+            $task = $brain['scheduler']['tasks'][$normalized];
+            $task['last_run_at'] = $timestamp;
+            $task['last_status'] = $status;
+            $task['last_message'] = $message;
+            $task['updated_at'] = $timestamp;
+            $brain['scheduler']['tasks'][$normalized] = $task;
+        });
+    }
+
+    public function recordSchedulerRun(array $results, int $durationMs, int $maxEntries = 100): array
+    {
+        $timestamp = $this->timestamp();
+        $entry = [
+            'timestamp' => $timestamp,
+            'duration_ms' => $durationMs,
+            'results' => $results,
+        ];
+
+        $this->updateSystemBrain(function (array &$brain) use (&$entry, $maxEntries): void {
+            if (!isset($brain['scheduler']) || !\is_array($brain['scheduler'])) {
+                $brain['scheduler'] = [];
+            }
+
+            if (!isset($brain['scheduler']['log']) || !\is_array($brain['scheduler']['log'])) {
+                $brain['scheduler']['log'] = [];
+            }
+
+            $brain['scheduler']['log'][] = $entry;
+
+            if ($maxEntries > 0 && \count($brain['scheduler']['log']) > $maxEntries) {
+                $brain['scheduler']['log'] = array_slice($brain['scheduler']['log'], -1 * $maxEntries);
+            }
+        });
+
+        return $entry;
+    }
+
+    public function listSchedulerLog(int $limit = 20): array
+    {
+        $brain = $this->loadSystemBrain();
+        $log = $brain['scheduler']['log'] ?? [];
+
+        if (!\is_array($log) || $log === []) {
+            return [];
+        }
+
+        $entries = array_slice($log, -1 * max(1, $limit));
+        return array_reverse($entries);
     }
 
     /**

@@ -12,6 +12,7 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 use function array_map;
 use function array_shift;
+use function array_slice;
 use function array_unshift;
 use function count;
 use function explode;
@@ -43,6 +44,7 @@ final class ProjectAgent
     {
         $this->registerParser();
         $this->registerProjectList();
+        $this->registerProjectCommits();
         $this->registerProjectCreate();
         $this->registerProjectUpdate();
         $this->registerProjectRemove();
@@ -66,6 +68,9 @@ final class ProjectAgent
                 case 'list':
                     $context->setAction('project list');
                     break;
+                case 'commits':
+                    $context->setAction('project commits');
+                    break;
                 case 'create':
                     $context->setAction('project create');
                     break;
@@ -88,11 +93,11 @@ final class ProjectAgent
                     break;
             }
 
-            $this->injectParameters($context, $tokens);
+            $this->injectParameters($context, $tokens, $context->action());
         }, 10);
     }
 
-    private function injectParameters(ParserContext $context, array $tokens): void
+    private function injectParameters(ParserContext $context, array $tokens, string $action): void
     {
         $parameters = [];
 
@@ -100,6 +105,13 @@ final class ProjectAgent
             $first = $tokens[0];
             if (!str_starts_with($first, '--') && strpos($first, '=') === false) {
                 $parameters['slug'] = array_shift($tokens);
+            }
+        }
+
+        if ($action === 'project commits' && $tokens !== []) {
+            $next = $tokens[0];
+            if (!str_starts_with($next, '--') && strpos($next, '=') === false) {
+                $parameters['entity'] = array_shift($tokens);
             }
         }
 
@@ -141,6 +153,17 @@ final class ProjectAgent
             'description' => 'List projects in the active brain.',
             'group' => 'project',
             'usage' => 'project list',
+        ]);
+    }
+
+    private function registerProjectCommits(): void
+    {
+        $this->context->commands()->register('project commits', function (array $parameters): CommandResponse {
+            return $this->projectCommitsCommand($parameters);
+        }, [
+            'description' => 'List commits for a project (optionally filtered by entity).',
+            'group' => 'project',
+            'usage' => 'project commits <project> [entity] [limit=50]',
         ]);
     }
 
@@ -212,6 +235,51 @@ final class ProjectAgent
             $this->logger->error('Failed to list projects', ['exception' => $exception]);
 
             return CommandResponse::error('project list', 'Unable to list projects.', [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function projectCommitsCommand(array $parameters): CommandResponse
+    {
+        $slug = $this->extractSlug($parameters);
+        if ($slug === null) {
+            return CommandResponse::error('project commits', 'Parameter "project" is required.');
+        }
+
+        $entity = isset($parameters['entity']) ? strtolower(trim((string) $parameters['entity'])) : null;
+        if ($entity === '') {
+            $entity = null;
+        }
+
+        $limit = 50;
+        if (isset($parameters['limit']) && (is_numeric($parameters['limit']) || is_string($parameters['limit']))) {
+            $limit = max(1, (int) $parameters['limit']);
+        }
+
+        try {
+            $commits = $this->brains->listProjectCommits($slug, $entity);
+            if ($limit > 0) {
+                $commits = array_slice($commits, 0, $limit);
+            }
+
+            return CommandResponse::success('project commits', [
+                'project' => $slug,
+                'entity' => $entity,
+                'count' => count($commits),
+                'commits' => $commits,
+            ], sprintf('Commits for project "%s"%s.', $slug, $entity !== null ? sprintf(' (entity "%s")', $entity) : ''));
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to list commits', [
+                'project' => $slug,
+                'entity' => $entity,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('project commits', $exception->getMessage(), [
                 'exception' => [
                     'message' => $exception->getMessage(),
                     'type' => get_class($exception),

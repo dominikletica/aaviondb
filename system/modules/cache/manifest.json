@@ -1,0 +1,14 @@
+{
+    "name": "Cache Agent",
+    "slug": "cache",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage cache configuration, status, and purging.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "cache.manage",
+        "logger.use"
+    ]
+}

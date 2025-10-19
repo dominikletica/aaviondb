@@ -1,0 +1,15 @@
+{
+    "name": "Scheduler Agent",
+    "slug": "scheduler",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage scheduled commands and cron execution.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use"
+    ]
+}

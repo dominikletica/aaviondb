@@ -8,7 +8,9 @@ use AavionDB\Core\CommandRegistry;
 use AavionDB\Core\Container;
 use AavionDB\Core\EventBus;
 use AavionDB\Core\Filesystem\PathLocator;
+use AavionDB\Core\Cache\CacheManager;
 use AavionDB\Core\Security\AuthManager;
+use AavionDB\Core\Security\SecurityManager;
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -103,6 +105,16 @@ final class ModuleContext
         return $repository;
     }
 
+    public function cache(): CacheManager
+    {
+        $this->assertCapability('cache.manage');
+
+        /** @var CacheManager $cache */
+        $cache = $this->container->get(CacheManager::class);
+
+        return $cache;
+    }
+
     public function auth(): AuthManager
     {
         $this->assertCapability('security.manage');
@@ -111,6 +123,16 @@ final class ModuleContext
         $auth = $this->container->get(AuthManager::class);
 
         return $auth;
+    }
+
+    public function security(): SecurityManager
+    {
+        $this->assertCapability('security.manage');
+
+        /** @var SecurityManager $security */
+        $security = $this->container->get(SecurityManager::class);
+
+        return $security;
     }
 
     public function hasCapability(string $capability): bool

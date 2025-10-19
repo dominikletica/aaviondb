@@ -8,21 +8,25 @@
 - Coordinate with ProjectAgent and ExportAgent for downstream workflows.
 
 ## Commands
-- `entity list <project> [with_versions=1]` – List entities with summary stats (optionally include version metadata).
-- `entity show <project> <entity> [@version|#commit]` – Show the current or specific version (by `@version` or commit hash `#...`).
-- `entity save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {json} [fieldset=<id[@version|#commit]|"] [merge=1|0|replace]` – Persist a payload as a new version. Payloads merge into the selected source version (default active) and allow schema binding via inline selector (`entity slug:schema`) or `fieldset` flag; use `fieldset=""` to detach.
-- `entity delete <project> <entity> [purge=0]` – Archive an entity (soft delete) or purge it entirely (when `purge=1`).
-- `entity restore <project> <entity> <@version|#commit>` – Reactivate a previous version and mark the entity as active again.
+- `list entities <project>` ↔ `entity list <project> [with_versions=1]` – List entities with summary stats (optionally including versions).
+- `list versions <project> <entity>` ↔ `entity versions …` – List all versions for a given entity.
+- `show <project> <entity[@version|#commit]>` ↔ `entity show …` – Show the active (default) or selector-driven version.
+- `save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {json} [fieldset=<id[@version|#commit]|"" ] [merge=1|0|replace]` ↔ `entity save …` – Persist a new version. Payload merges into the selected source version (default active) and can bind a schema via inline selector or `fieldset` flag; `fieldset=""` detaches.
+- `remove <project> <entity[,entity2]>` ↔ `entity remove …` – Deactivate the active version of one or more entities (history retained).
+- `delete <project> <entity[,entity2]>` ↔ `entity delete …` – Purge entire entities (all versions + commits).
+- `delete <project> <entity@version[,entity2#commit]>` – Targeted deletion of specific versions/commits without removing the full entity.
+- `restore <project> <entity@version|entity#commit>` ↔ `entity restore …` – Reactivate a specific revision and mark it as active.
 
 ## Implementation Notes
-- Module lives in `system/modules/entity` and depends on BrainRepository helpers (`listEntities`, `listEntityVersions`, `saveEntity`, `archiveEntity`, `deleteEntity`, `restoreEntityVersion`, `entityReport`).
-- Parser supports natural CLI syntax (`entity save demo user {"name":"Alice"}`) and extracts flags/refs. Inline schema selectors (`entity save demo user:profile`) automatically populate the `fieldset` option.
+- Module lives in `system/modules/entity` and depends on BrainRepository helpers (`listEntities`, `listEntityVersions`, `saveEntity`, `deactivateEntity`, `deleteEntity`, `deleteEntityVersion`, `restoreEntityVersion`, `purgeInactiveEntityVersions`, `entityReport`).
+- Parser supports natural CLI syntax as well as top-level shortcuts (`save`, `show`, `list versions`, `remove`, `delete`); inline schema selectors (`entity save demo user:profile`) automatically populate the `fieldset` option.
 - Incremental saves merge the new payload into the selected source version (default: active). Properties set to `null` are removed; associative sub-objects merge recursively; indexed arrays are replaced wholesale. Merge sources can be pinned via `entity@13`/`entity#commit` selectors.
 - JSON schemas reside in project `fieldsets`. Schema entities are linted before storage, and entity saves with a `fieldset` apply validation plus default/placeholder expansion to the merged payload.
 - Schema handling lives in `system/Schema/SchemaValidator.php` (`applySchema()` / `assertValidSchema()`); adjust placeholder/default logic there if schema semantics evolve.
 - Commit metadata now includes the effective `merge` flag and `fieldset`, enabling downstream tooling to reason about incremental updates.
 - Schema selectors support version pins (`:fieldset@14`, `:fieldset#hash`) and are resolved before validation; both schema and merge source references are stored alongside commit metadata for diagnostics.
-- Soft delete retains historical versions; purge removes entity and (optionally) associated commit map entries.
+- Soft delete via `remove` retains historical versions; `delete` purges entire entities or specific revisions and updates the commit map accordingly.
+- `brain cleanup` and `delete <project> <entity@version>` reuse the same repository helpers to keep commit metadata in sync.
 
 ## Examples
 

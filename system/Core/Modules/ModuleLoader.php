@@ -27,6 +27,7 @@ final class ModuleLoader
             'storage.read',
             'storage.write',
             'security.manage',
+            'cache.manage',
         ],
         ModuleDescriptor::SCOPE_USER => [
             'logger.use',
@@ -46,6 +47,7 @@ final class ModuleLoader
             'storage.read',
             'storage.write',
             'security.manage',
+            'cache.manage',
         ],
         ModuleDescriptor::SCOPE_USER => [
             'commands.register',

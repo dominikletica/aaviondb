@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace AavionDB\Core;
 
 use DateTimeImmutable;
+use AavionDB\Core\Cache\CacheManager;
 use AavionDB\Core\Exceptions\BootstrapException;
 use AavionDB\Core\Exceptions\StorageException;
 use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Logging\LoggerFactory;
 use AavionDB\Core\Modules\ModuleLoader;
 use AavionDB\Core\Security\AuthManager;
+use AavionDB\Core\Security\SecurityManager;
 use AavionDB\Storage\BrainRepository;
 use Monolog\Level;
 use Psr\Log\LoggerInterface;
@@ -139,6 +141,37 @@ final class Bootstrap
             ];
 
             return new BrainRepository($paths, $events, $defaults);
+        });
+
+        $container->set(CacheManager::class, function (Container $container): CacheManager {
+            /** @var PathLocator $paths */
+            $paths = $container->get(PathLocator::class);
+            /** @var BrainRepository $brains */
+            $brains = $container->get(BrainRepository::class);
+            /** @var LoggerInterface $logger */
+            $logger = $container->get(LoggerInterface::class);
+            /** @var EventBus $events */
+            $events = $container->get(EventBus::class);
+
+            $manager = new CacheManager($paths, $brains, $logger);
+            $manager->ensureDefaults();
+            $manager->registerEventListeners($events);
+
+            return $manager;
+        });
+
+        $container->set(SecurityManager::class, function (Container $container): SecurityManager {
+            /** @var BrainRepository $brains */
+            $brains = $container->get(BrainRepository::class);
+            /** @var CacheManager $cache */
+            $cache = $container->get(CacheManager::class);
+            /** @var LoggerInterface $logger */
+            $logger = $container->get(LoggerInterface::class);
+
+            $manager = new SecurityManager($brains, $cache, $logger);
+            $manager->ensureDefaults();
+
+            return $manager;
         });
 
         $container->set(ModuleLoader::class, function (Container $container): ModuleLoader {

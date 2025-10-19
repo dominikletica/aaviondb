@@ -8,6 +8,12 @@ use AavionDB\AavionDB;
 use AavionDB\Core\Bootstrap;
 use AavionDB\Core\CommandResponse;
 use AavionDB\Core\Modules\ModuleContext;
+use AavionDB\Core\ParserContext;
+use function array_unshift;
+use function count;
+use function in_array;
+use function strtolower;
+use function trim;
 
 /**
  * Registers baseline status/diagnostics/help commands for AavionDB.
@@ -23,9 +29,117 @@ final class CoreAgent
 
     public function register(): void
     {
+        $this->registerShortcutParsers();
         $this->registerStatusCommand();
         $this->registerDiagnoseCommand();
         $this->registerHelpCommand();
+    }
+
+    private function registerShortcutParsers(): void
+    {
+        $this->context->commands()->registerParserHandler('list', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            $subject = strtolower(trim(array_shift($tokens)));
+
+            switch ($subject) {
+                case 'projects':
+                    $context->setAction('project');
+                    array_unshift($tokens, 'list');
+                    $context->setTokens($tokens);
+                    return;
+                case 'entities':
+                    $context->setAction('entity');
+                    array_unshift($tokens, 'list');
+                    $context->setTokens($tokens);
+                    return;
+                case 'versions':
+                    $context->setAction('entity');
+                    array_unshift($tokens, 'versions');
+                    $context->setTokens($tokens);
+                    return;
+                case 'commits':
+                    $context->setAction('project');
+                    array_unshift($tokens, 'commits');
+                    $context->setTokens($tokens);
+                    return;
+                default:
+                    return;
+            }
+        }, 50);
+
+        $this->context->commands()->registerParserHandler('save', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            $context->setAction('entity');
+            array_unshift($tokens, 'save');
+            $context->setTokens($tokens);
+        }, 50);
+
+        $this->context->commands()->registerParserHandler('show', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            $context->setAction('entity');
+            array_unshift($tokens, 'show');
+            $context->setTokens($tokens);
+        }, 50);
+
+        $this->context->commands()->registerParserHandler('remove', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            $context->setAction('entity');
+            array_unshift($tokens, 'remove');
+            $context->setTokens($tokens);
+        }, 50);
+
+        $this->context->commands()->registerParserHandler('restore', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            $context->setAction('entity');
+            array_unshift($tokens, 'restore');
+            $context->setTokens($tokens);
+        }, 50);
+
+        $this->context->commands()->registerParserHandler('delete', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            // Single token -> treat as brain deletion (delete <brain>).
+            if (count($tokens) === 1) {
+                $context->setAction('brain');
+                array_unshift($tokens, 'delete');
+                $context->setTokens($tokens);
+                return;
+            }
+
+            $context->setAction('entity');
+            array_unshift($tokens, 'delete');
+            $context->setTokens($tokens);
+        }, 50);
+
+        $this->context->commands()->registerParserHandler('cleanup', function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            $context->setAction('brain');
+            array_unshift($tokens, 'cleanup');
+            $context->setTokens($tokens);
+        }, 50);
     }
 
     private function registerStatusCommand(): void
