@@ -142,3 +142,4 @@
 - SchemaAgent gained `create`, `update`, `save`, and `delete` wrappers around the `fieldsets` project.
 - Introduced EventsAgent with `events listeners` for quick EventBus diagnostics.
 - Added `aaviondb.php` PHP entry point consolidating bootstrap for include-based integrations.
+- **Next session focus:** proceed with Roadmap step 1 (extend `brain cleanup` with dry-run/retention preview and add compaction/repair utilities) before tackling the remaining roadmap items. Keep Roadmap order for subsequent work; unit tests are reserved for the final step once all features are in place.

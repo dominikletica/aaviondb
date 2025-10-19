@@ -32,6 +32,10 @@
 - Prefer non-throwing flows: wrap operations in `try/catch`, log via Monolog, return unified `CommandResponse` payloads.
 - Maintain consistent entry-point behaviour (REST/CLI/PHP) and ensure tests/diagnostics are updated alongside code.
 - When adding modules/commands, document them in the appropriate partial and note follow-up items (tests, security review, UI integration).
+- Repository content must remain **English-only** (code comments, docs, commit messages). Communicate with the maintainer in German if requested, but never commit German text to the repo; translate or rewrite immediately when such fragments appear.
+- Treat `docs/dev/classmap.md` and `docs/dev/commands.md` as canonical references for classes and CLI actions; update them whenever APIs or commands change so they remain trustworthy lookup tables.
+- Keep the root `README.md` aligned with the latest behaviour—whenever features or commands shift, update the README alongside developer docs so users get accurate guidance.
+- Plan for the upcoming **AavionStudio** project (external UI) that must interact with all framework features via native module calls **and** REST endpoints. Ensure new APIs, commands, and schema adjustments remain accessible/consistent for the Studio integration.
 
 ---
 
