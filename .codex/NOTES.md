@@ -19,6 +19,7 @@
 - **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [ ] cascade coordination with EntityAgent.
 - **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
 - **EntityAgent (`entity`)**: [x] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge); [ ] allow schema selectors to target historical revisions (e.g. `fieldset@13` / `#hash`) and evaluate merges against non-active entity versions.
+- **ConfigAgent (`config`)**: [x] `set`/`get` commands for user/system config; [ ] advanced value typing + bulk import/export; [ ] audit trail integration.
 - **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [ ] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
 - **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] integrate audit logging + bootstrap key guidance; [ ] prepare scoped key/role management.
 - **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] batched/async hooks.

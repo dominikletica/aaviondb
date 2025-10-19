@@ -1,0 +1,15 @@
+{
+    "name": "Config Agent",
+    "slug": "config",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage runtime configuration values in user/system brains.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use"
+    ]
+}

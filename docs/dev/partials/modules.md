@@ -140,6 +140,10 @@ return [
   - CRUD for entities and versions
   - Handle canonical hashing and version history
   - Restore/delete operations using `@version` / `#commit` selectors
+- **`ConfigAgent` (`config`)** – Runtime configuration helper
+  - `set`/`get` convenience commands for user/system brains
+  - Supports JSON payloads and deletion via `set <key>` without value
+  - Wrapper around `BrainRepository` config API
 - **`SchemaAgent` (`schema`)** – Fieldset management & validation
   - List schemas stored in the `fieldsets` project
   - Inspect specific schema revisions via `@version`/`#commit`
@@ -180,6 +184,7 @@ return [
 - [`modules/brain.md`](./modules/brain.md) – BrainAgent
 - [`modules/project.md`](./modules/project.md) – ProjectAgent
 - [`modules/entity.md`](./modules/entity.md) – EntityAgent
+- [`modules/config.md`](./modules/config.md) – ConfigAgent
 - [`modules/schema.md`](./modules/schema.md) – SchemaAgent
 - [`modules/export.md`](./modules/export.md) – ExportAgent
 - [`modules/auth.md`](./modules/auth.md) – AuthAgent
