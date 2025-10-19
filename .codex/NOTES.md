@@ -83,12 +83,12 @@
 - [ ] Design export profiles for schema-aware/LLM-optimised output (Roadmap items).
 
 **AuthAgent (`auth`)**
-- [ ] Commands: `auth grant/list/revoke/reset` using repository helpers.
+- [x] Commands: `auth grant/list/revoke/reset` using repository helpers.
 - [ ] Integrate audit logging (LogAgent) + bootstrap key guidance.
 - [ ] Keep token storage ready for scoped keys / role sets (Access Control Extensions).
 
 **ApiAgent (`api`)**
-- [ ] Commands: `api serve/stop/status/reset`; validate REST readiness before enabling.
+- [x] Commands: `api serve/stop/status/reset`; validate REST readiness before enabling.
 - [ ] Expose hooks for batched/asynchronous actions (Enhanced REST API Layer).
 
 **UiAgent (`ui`)**
@@ -118,3 +118,8 @@
 - Added BrainAgent module (`system/modules/brain`): brains/list/init/switch/backup/info/validate with BrainRepository extensions (listBrains, createBrain, etc.).
 - Added ProjectAgent module (`system/modules/project`): project lifecycle (list/create/remove/delete/info) using repository helpers + soft/hard delete semantics.
 - Introduced `config.php` (based on `config.example.php`) for admin secret, default brain, storage paths, export behaviour, and API key length. Config is loaded at bootstrap and shared via container.
+- Finalised AuthAgent baseline: REST requests now execute inside scoped contexts and BrainRepository enforces project filters for token scopes; documentation updated to reflect completion.
+
+## 2025-10-19 – Morning Session
+
+- Implemented ApiAgent module with `api serve/stop/status/reset`, including readiness checks, telemetry output, and token reset convenience command; docs and README aligned with the new workflow. Next focus: API scheduling hooks and test coverage for Auth/Api agents.

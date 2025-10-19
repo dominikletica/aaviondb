@@ -176,8 +176,8 @@ return [
 - [`modules/project.md`](./modules/project.md) – ProjectAgent *(draft)*
 - [`modules/entity.md`](./modules/entity.md) – EntityAgent *(draft)*
 - [`modules/export.md`](./modules/export.md) – ExportAgent *(draft)*
-- [`modules/auth.md`](./modules/auth.md) – AuthAgent *(draft)*
-- [`modules/api.md`](./modules/api.md) – ApiAgent *(draft)*
+- [`modules/auth.md`](./modules/auth.md) – AuthAgent
+- [`modules/api.md`](./modules/api.md) – ApiAgent
 - [`modules/ui.md`](./modules/ui.md) – UiAgent *(draft)*
 - [`modules/log.md`](./modules/log.md) – LogAgent *(draft)*
 - [`modules/events.md`](./modules/events.md) – EventsAgent *(draft)*

@@ -1,0 +1,16 @@
+{
+    "name": "Api Agent",
+    "slug": "api",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Control REST API availability and diagnostics.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use",
+        "container.access"
+    ]
+}

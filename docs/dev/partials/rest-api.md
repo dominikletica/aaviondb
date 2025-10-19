@@ -7,6 +7,14 @@
 - REST is disabled by default (`system.brain.state.api_enabled = false`).  
 - Activate via CLI/PHP: `auth grant` (generates non-bootstrap key) + `api serve`.  
 - Requests must include `Authorization: Bearer <token>`; bootstrap key `admin` is rejected for REST.
+- Tokens carry scope metadata (`ALL`, `RW`, `RO`, `WO`) and optional project filters.  
+  - `WO` currently falls back to `RW` behaviour until dedicated write-only flows ship.
+- `AuthManager` validates tokens, then executes the request inside the granted scope via `AavionDB::withScope()`.
+- Manage availability with ApiAgent commands:  
+  - `api serve [reason=text]` – enable REST (requires ≥1 active token).  
+  - `api stop [reason=text]` – disable REST, optionally recording a reason.  
+  - `api status` – report telemetry (`enabled`, active token count, bootstrap state, last request/enabled/disabled timestamps, last actor).  
+  - `api reset` – revoke all API tokens and keep REST disabled (wrapper around `BrainRepository::resetAuthTokens()`).
 
 ## Endpoint
 `api.php?action=<command>[&param=value]`

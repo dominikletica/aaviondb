@@ -65,9 +65,10 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 ### API Commands
 | Command | Description |
 |----------|-------------|
-| `api serve` | Starts the REST API service (via `api.php`). |
-| `api stop` | Stops the API service. |
-| `api reset` | Regenerates the API key and invalidates the old one. |
+| `api serve` | Enables the REST API once at least one scoped token exists. |
+| `api stop` | Disables the REST API (idempotent). |
+| `api status` | Prints REST API telemetry (enabled flag, token counts, last activity). |
+| `api reset` | Disables REST and revokes all issued API tokens. |
 
 ---
 

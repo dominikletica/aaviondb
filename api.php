@@ -133,8 +133,15 @@ if (($guard['allowed'] ?? false) !== true) {
     return;
 }
 
+$scope = $guard['scope'] ?? null;
+$dispatcher = static function () use ($action, $parameters): array {
+    return AavionDB::run($action, $parameters);
+};
+
 try {
-    $result = AavionDB::run($action, $parameters);
+    $result = \is_array($scope)
+        ? AavionDB::withScope($scope, $dispatcher)
+        : $dispatcher();
 } catch (\Throwable $exception) {
     if ($logger !== null) {
         $logger->error('Unhandled exception during REST dispatch', [

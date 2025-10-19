@@ -43,6 +43,8 @@ final class AuthManager
         if ($this->allowsAdminSecret($token)) {
             $this->logger->notice('REST access granted via admin secret.', ['action' => $action]);
 
+            $scope = $this->defaultScope();
+
             return [
                 'allowed' => true,
                 'status_code' => 200,
@@ -55,6 +57,7 @@ final class AuthManager
                         'mode' => 'admin_secret',
                     ],
                 ],
+                'scope' => $scope,
             ];
         }
 
@@ -71,6 +74,7 @@ final class AuthManager
                     'Authentication subsystem unavailable.',
                     ['reason' => 'auth_unavailable']
                 ),
+                'scope' => null,
             ];
         }
 
@@ -89,6 +93,7 @@ final class AuthManager
                         'bootstrap_active' => $auth['bootstrap_effective'] ?? true,
                     ]
                 ),
+                'scope' => null,
             ];
         }
 
@@ -101,6 +106,7 @@ final class AuthManager
                     'Missing API token.',
                     ['reason' => 'token_missing']
                 ),
+                'scope' => null,
             ];
         }
 
@@ -119,6 +125,7 @@ final class AuthManager
                     'Bootstrap token cannot be used for REST access.',
                     ['reason' => 'bootstrap_forbidden']
                 ),
+                'scope' => null,
             ];
         }
 
@@ -134,6 +141,7 @@ final class AuthManager
                     'Invalid or unknown API token.',
                     ['reason' => 'token_invalid']
                 ),
+                'scope' => null,
             ];
         }
 
@@ -152,8 +160,11 @@ final class AuthManager
                     'API token is not active.',
                     ['reason' => 'token_inactive']
                 ),
+                'scope' => null,
             ];
         }
+
+        $scope = $this->scopeFromToken($lookup);
 
         try {
             $this->brains->touchAuthKey($lookup['hash'], $lookup['token_preview'] ?? $this->preview($token));
@@ -175,8 +186,11 @@ final class AuthManager
                 'data' => null,
                 'meta' => [
                     'token_hash' => $lookup['hash'] ?? null,
+                    'scope' => $scope['mode'],
+                    'projects' => $scope['projects'],
                 ],
             ],
+            'scope' => $scope,
         ];
     }
 
@@ -238,6 +252,51 @@ final class AuthManager
             'message' => $message,
             'data' => null,
             'meta' => $meta,
+        ];
+    }
+
+    /**
+     * @return array{mode: string, projects: array<int, string>}
+     */
+    private function defaultScope(): array
+    {
+        return [
+            'mode' => 'ALL',
+            'projects' => ['*'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     *
+     * @return array{mode: string, projects: array<int, string>}
+     */
+    private function scopeFromToken(array $entry): array
+    {
+        $meta = isset($entry['meta']) && \is_array($entry['meta']) ? $entry['meta'] : [];
+        $mode = \strtoupper((string) ($meta['scope'] ?? 'ALL'));
+        $projects = $meta['projects'] ?? ['*'];
+
+        if (!\is_array($projects)) {
+            $projects = \array_map('trim', \explode(',', (string) $projects));
+        }
+
+        $projects = \array_values(\array_filter(\array_map(static function ($value) {
+            if ($value === null) {
+                return null;
+            }
+
+            $value = \strtolower((string) $value);
+            return $value === '' ? null : $value;
+        }, $projects), static fn ($value) => $value !== null));
+
+        if ($projects === [] || \in_array('*', $projects, true)) {
+            $projects = ['*'];
+        }
+
+        return [
+            'mode' => $mode,
+            'projects' => $projects,
         ];
     }
 

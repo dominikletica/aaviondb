@@ -1,0 +1,16 @@
+{
+    "name": "Auth Agent",
+    "slug": "auth",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage API tokens, scopes, and REST enablement.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use",
+        "container.access"
+    ]
+}

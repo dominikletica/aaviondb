@@ -5,11 +5,17 @@ declare(strict_types=1);
 namespace AavionDB\Storage;
 
 use DateTimeImmutable;
+use AavionDB\AavionDB;
 use AavionDB\Core\EventBus;
 use AavionDB\Core\Exceptions\StorageException;
 use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Hashing\CanonicalJson;
 use Ramsey\Uuid\Uuid;
+use function in_array;
+use function strtolower;
+use function trim;
+use function array_values;
+use function array_filter;
 
 /**
  * Manages lifecycle and persistence of system and user brain files.
@@ -137,6 +143,10 @@ final class BrainRepository
                 continue;
             }
 
+            if (!$this->canReadProject($slug)) {
+                continue;
+            }
+
             $result[$slug] = $this->summarizeProject($slug, $project);
         }
 
@@ -150,7 +160,9 @@ final class BrainRepository
      */
     public function listEntities(string $projectSlug): array
     {
-        $project = $this->getProject($projectSlug);
+        $slug = $this->normalizeKey($projectSlug);
+        $this->assertReadAllowed($slug);
+        $project = $this->getProject($slug);
         $entities = $project['entities'] ?? [];
         $result = [];
 
@@ -170,6 +182,7 @@ final class BrainRepository
      */
     public function listEntityVersions(string $projectSlug, string $entitySlug): array
     {
+        $this->assertReadAllowed($projectSlug);
         $project = $this->getProject($projectSlug);
         $slug = $this->normalizeKey($entitySlug);
 
@@ -211,6 +224,10 @@ final class BrainRepository
             throw new StorageException(sprintf('Project "%s" already exists.', $projectSlug));
         }
 
+        if (!$this->canWriteProject($slug)) {
+            throw new StorageException(sprintf('Insufficient permissions to create project "%s".', $projectSlug));
+        }
+
         $timestamp = $this->timestamp();
         $project = $this->defaultProject($slug, $timestamp);
         if ($title !== null && $title !== '') {
@@ -240,6 +257,8 @@ final class BrainRepository
             throw new StorageException(sprintf('Project "%s" does not exist.', $projectSlug));
         }
 
+        $this->assertWriteAllowed($slug);
+
         $timestamp = $this->timestamp();
         $brain['projects'][$slug]['status'] = 'archived';
         $brain['projects'][$slug]['archived_at'] = $timestamp;
@@ -264,6 +283,8 @@ final class BrainRepository
         if (!isset($brain['projects'][$slug])) {
             throw new StorageException(sprintf('Project "%s" does not exist.', $projectSlug));
         }
+
+        $this->assertWriteAllowed($slug);
 
         unset($brain['projects'][$slug]);
 
@@ -293,6 +314,7 @@ final class BrainRepository
     public function projectReport(string $projectSlug, bool $includeEntities = true): array
     {
         $slug = $this->normalizeKey($projectSlug);
+        $this->assertReadAllowed($slug);
         $project = $this->getProject($slug);
 
         $summary = $this->summarizeProject($slug, $project);
@@ -307,6 +329,7 @@ final class BrainRepository
     public function entityReport(string $projectSlug, string $entitySlug, bool $includeVersions = true): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertReadAllowed($slugProject);
         $slugEntity = $this->normalizeKey($entitySlug);
 
         $project = $this->getProject($slugProject);
@@ -328,6 +351,7 @@ final class BrainRepository
     public function archiveEntity(string $projectSlug, string $entitySlug): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slugProject);
         $slugEntity = $this->normalizeKey($entitySlug);
         $brain = $this->loadActiveBrain();
 
@@ -365,6 +389,7 @@ final class BrainRepository
     public function deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true): void
     {
         $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slugProject);
         $slugEntity = $this->normalizeKey($entitySlug);
         $brain = $this->loadActiveBrain();
 
@@ -403,6 +428,7 @@ final class BrainRepository
     public function restoreEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slugProject);
         $slugEntity = $this->normalizeKey($entitySlug);
         $brain = $this->loadActiveBrain();
 
@@ -458,6 +484,8 @@ final class BrainRepository
     {
         $slugProject = $this->normalizeKey($projectSlug);
         $slugEntity = $this->normalizeKey($entitySlug);
+
+        $this->assertWriteAllowed($slugProject);
 
         $brain = $this->loadActiveBrain();
         $timestamp = $this->timestamp();
@@ -606,6 +634,8 @@ final class BrainRepository
     {
         $brain = $this->loadActiveBrain();
         $slug = $this->normalizeKey($projectSlug);
+
+        $this->assertReadAllowed($slug);
 
         if (!isset($brain['projects'][$slug]) || !\is_array($brain['projects'][$slug])) {
             throw new StorageException(sprintf('Project "%s" not found in active brain.', $projectSlug));
@@ -914,6 +944,21 @@ final class BrainRepository
         $timestamp = $this->timestamp();
         $created = false;
 
+        $scope = isset($metadata['scope']) ? strtoupper((string) $metadata['scope']) : null;
+        $projects = $metadata['projects'] ?? null;
+
+        if ($projects !== null && !\is_array($projects)) {
+            $projects = array_map('trim', explode(',', (string) $projects));
+        }
+
+        if (\is_array($projects)) {
+            $projects = array_values(array_filter(array_map('strtolower', $projects), static fn ($value) => $value !== ''));
+        }
+
+        if ($projects === null || $projects === []) {
+            $projects = ['*'];
+        }
+
         $entry = [
             'hash' => $hash,
             'status' => 'active',
@@ -923,6 +968,12 @@ final class BrainRepository
             'last_used_at' => null,
             'meta' => isset($metadata['meta']) && \is_array($metadata['meta']) ? $metadata['meta'] : [],
         ];
+
+        if ($scope !== null) {
+            $entry['meta']['scope'] = $scope;
+        }
+
+        $entry['meta']['projects'] = $projects;
 
         if (isset($metadata['label'])) {
             $entry['label'] = (string) $metadata['label'];
@@ -943,8 +994,8 @@ final class BrainRepository
                     $entry['last_used_at'] = $existing['last_used_at'];
                 }
 
-                if (isset($existing['meta']) && \is_array($existing['meta']) && $entry['meta'] === []) {
-                    $entry['meta'] = $existing['meta'];
+                if (isset($existing['meta']) && \is_array($existing['meta'])) {
+                    $entry['meta'] = \array_merge($existing['meta'], $entry['meta']);
                 }
 
                 if (isset($existing['label']) && !isset($entry['label'])) {
@@ -1029,6 +1080,57 @@ final class BrainRepository
         }
 
         return $revoked;
+    }
+
+    /**
+     * Revokes all tokens and disables the REST API.
+     */
+    public function resetAuthTokens(): array
+    {
+        $timestamp = $this->timestamp();
+        $revoked = 0;
+
+        $this->updateSystemBrain(function (array &$brain) use ($timestamp, &$revoked): void {
+            $brain['auth'] = $this->mergeAuthSection($brain['auth'] ?? [], $this->defaultAuthState());
+            $brain['api'] = $this->mergeApiSection($brain['api'] ?? [], $this->defaultApiState());
+
+            if (!isset($brain['auth']['keys']) || !\is_array($brain['auth']['keys'])) {
+                $brain['auth']['keys'] = [];
+            }
+
+            foreach ($brain['auth']['keys'] as $hash => &$entry) {
+                if (!\is_array($entry)) {
+                    continue;
+                }
+
+                if (($entry['status'] ?? 'active') === 'revoked') {
+                    continue;
+                }
+
+                $entry['status'] = 'revoked';
+                $entry['revoked_at'] = $timestamp;
+                $entry['revoked_by'] = 'auth reset';
+                $revoked++;
+            }
+            unset($entry);
+
+            $brain['auth']['bootstrap_active'] = true;
+            $brain['auth']['last_rotation_at'] = $timestamp;
+        });
+
+        $this->setApiEnabled(false, [
+            'actor' => 'auth reset',
+            'reason' => 'all tokens revoked',
+        ]);
+
+        $this->events->emit('auth.reset', [
+            'revoked' => $revoked,
+        ]);
+
+        return [
+            'revoked' => $revoked,
+            'api_enabled' => false,
+        ];
     }
 
     /**
@@ -1772,6 +1874,118 @@ final class BrainRepository
         $basename = \basename($path, '.brain');
 
         return $basename !== '' ? $basename : 'default';
+    }
+
+    private function assertReadAllowed(string $projectSlug): void
+    {
+        if (!$this->canReadProject($projectSlug)) {
+            throw new StorageException(sprintf('Read access to project "%s" is not permitted for the current scope.', $projectSlug));
+        }
+    }
+
+    private function assertWriteAllowed(string $projectSlug): void
+    {
+        if (!$this->canWriteProject($projectSlug)) {
+            throw new StorageException(sprintf('Write access to project "%s" is not permitted for the current scope.', $projectSlug));
+        }
+    }
+
+    private function canReadProject(string $projectSlug): bool
+    {
+        $mode = $this->scopeMode();
+
+        if (!\in_array($mode, ['ALL', 'RW', 'RO', 'WO'], true)) {
+            return false;
+        }
+
+        return $this->projectInScope($projectSlug);
+    }
+
+    private function canWriteProject(string $projectSlug): bool
+    {
+        $mode = $this->scopeMode();
+
+        if (!\in_array($mode, ['ALL', 'RW', 'WO'], true)) {
+            return false;
+        }
+
+        return $this->projectInScope($projectSlug);
+    }
+
+    /**
+     * @return array{mode: string, projects: array<int, string>}
+     */
+    private function currentScope(): array
+    {
+        $scope = AavionDB::scope();
+
+        $mode = isset($scope['mode']) && \is_string($scope['mode']) ? $scope['mode'] : 'ALL';
+        $projects = $scope['projects'] ?? ['*'];
+
+        if (!\is_array($projects)) {
+            $projects = [$projects];
+        }
+
+        return [
+            'mode' => \strtoupper($mode),
+            'projects' => $projects,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function scopeProjects(): array
+    {
+        $scope = $this->currentScope();
+        $projects = $scope['projects'];
+
+        $normalized = [];
+
+        foreach ($projects as $project) {
+            if (!\is_string($project)) {
+                continue;
+            }
+
+            $project = \trim($project);
+
+            if ($project === '') {
+                continue;
+            }
+
+            if ($project === '*') {
+                return ['*'];
+            }
+
+            $normalized[] = $this->normalizeKey($project);
+        }
+
+        if ($normalized === []) {
+            return ['*'];
+        }
+
+        return \array_values(\array_unique($normalized));
+    }
+
+    private function projectInScope(string $project): bool
+    {
+        $projects = $this->scopeProjects();
+
+        if (\in_array('*', $projects, true)) {
+            return true;
+        }
+
+        $slug = $this->normalizeKey($project);
+
+        return \in_array($slug, $projects, true);
+    }
+
+    private function scopeMode(): string
+    {
+        $scope = $this->currentScope();
+        $mode = \strtoupper($scope['mode'] ?? 'ALL');
+
+        return \in_array($mode, ['ALL', 'RW', 'RO', 'WO'], true) ? $mode : 'ALL';
     }
 
     /**

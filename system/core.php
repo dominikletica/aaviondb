@@ -33,6 +33,14 @@ final class AavionDB
     private static array $config = [];
 
     /**
+     * @var array{mode: string, projects: array<int, string>}
+     */
+    private static array $currentScope = [
+        'mode' => 'ALL',
+        'projects' => ['*'],
+    ];
+
+    /**
      * Bootstraps the framework. May only be invoked once per request lifecycle.
      *
      * @param array<string, mixed> $options
@@ -162,6 +170,34 @@ final class AavionDB
     public static function config(): array
     {
         return self::$config;
+    }
+
+    /**
+     * Returns the current access scope.
+     *
+     * @return array{mode: string, projects: array<int, string>}
+     */
+    public static function scope(): array
+    {
+        return self::$currentScope;
+    }
+
+    /**
+     * Executes a callback within a temporary access scope.
+     *
+     * @param array{mode?: string, projects?: array<int, string>|string} $scope
+     * @param callable(): array<string, mixed>                              $callback
+     */
+    public static function withScope(array $scope, callable $callback): array
+    {
+        $previous = self::$currentScope;
+        self::$currentScope = self::normalizeScope($scope);
+
+        try {
+            return $callback();
+        } finally {
+            self::$currentScope = $previous;
+        }
     }
 
     /**
@@ -318,6 +354,40 @@ final class AavionDB
             'message' => $message,
             'data' => null,
             'meta' => $meta,
+        ];
+    }
+
+    /**
+     * @param array{mode?: string, scope?: string, projects?: array<int, string>|string} $scope
+     *
+     * @return array{mode: string, projects: array<int, string>}
+     */
+    private static function normalizeScope(array $scope): array
+    {
+        $mode = \strtoupper((string) ($scope['mode'] ?? $scope['scope'] ?? 'ALL'));
+
+        $projects = $scope['projects'] ?? ['*'];
+
+        if (!\is_array($projects)) {
+            $projects = \array_map('trim', \explode(',', (string) $projects));
+        }
+
+        $projects = \array_values(\array_filter(\array_map(static function ($value) {
+            if ($value === null) {
+                return null;
+            }
+
+            $value = \strtolower((string) $value);
+            return $value === '' ? null : $value;
+        }, $projects), static fn ($value) => $value !== null));
+
+        if ($projects === [] || \in_array('*', $projects, true)) {
+            $projects = ['*'];
+        }
+
+        return [
+            'mode' => $mode,
+            'projects' => $projects,
         ];
     }
 }
