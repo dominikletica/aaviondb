@@ -1,6 +1,6 @@
-# EntityAgent Module (DRAFT)
+# EntityAgent Module
 
-> Status: Draft – implementation in progress.
+> Status: Implemented – entity CRUD and version lifecycle management.
 
 ## Responsibilities
 - Manage entity CRUD and version lifecycle inside the active project.
@@ -18,6 +18,49 @@
 - Module lives in `system/modules/entity` and depends on BrainRepository helpers (`listEntities`, `listEntityVersions`, `saveEntity`, `archiveEntity`, `deleteEntity`, `restoreEntityVersion`, `entityReport`).
 - Parser supports natural CLI syntax (`entity save demo user {"name":"Alice"}`) and extracts flags/refs.
 - Soft delete retains historical versions; purge removes entity and (optionally) associated commit map entries.
+
+## Examples
+
+### CLI
+```bash
+php cli.php "entity list demo"
+```
+```json
+{
+  "status": "ok",
+  "action": "entity list",
+  "data": {
+    "project": "demo",
+    "count": 3,
+    "entities": [
+      {"slug": "hero", "status": "active", "version_count": 7},
+      {"slug": "outline", "status": "active", "version_count": 14}
+    ]
+  }
+}
+```
+
+### REST
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://example.test/api.php?action=entity%20show&project=demo&entity=hero"
+```
+Returns the active payload (default) or a selector-driven revision when `ref=@7`/`ref=#commit` is supplied.
+
+### PHP
+```php
+$payload = ['name' => 'Aerin Tal', 'role' => 'Navigator'];
+$response = AavionDB::run('entity save', [
+    'project' => 'demo',
+    'entity' => 'hero',
+    'payload' => $payload,
+]);
+```
+
+## Error Handling
+- Missing `project`/`entity` parameters yield `status=error` with helpful messages (REST → 400).
+- Unknown entities or versions raise `StorageException` messages such as `Entity "hero" not found in project "demo".` (surfaced via `status=error`).
+- Payload parsing errors (invalid JSON in CLI/REST) propagate as `status=error` with the JSON parser message in `meta.exception`.
 - REST responses mirror CLI behaviour via `CommandResponse` objects.
 
 ## Outstanding Tasks

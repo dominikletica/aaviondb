@@ -1,6 +1,6 @@
-# BrainAgent Module (DRAFT)
+# BrainAgent Module
 
-> Status: Draft – placeholder for brain lifecycle documentation.
+> Status: Implemented – brain discovery, activation, and validation commands.
 
 ## Responsibilities
 - Manage brain discovery, activation, initialisation, and backups.
@@ -18,6 +18,43 @@
 
 ## Implementation Notes
 - Module lives in `system/modules/brain` and leverages new helpers in `BrainRepository` (`listBrains`, `createBrain`, `setActiveBrain`, `backupBrain`, `brainReport`, `integrityReportFor`).
+
+## Examples
+
+### CLI
+```bash
+php cli.php "brains"
+```
+```json
+{
+  "status": "ok",
+  "action": "brains",
+  "data": {
+    "count": 2,
+    "brains": [
+      {"slug": "system", "type": "system", "active": false},
+      {"slug": "default", "type": "user", "active": true}
+    ]
+  }
+}
+```
+
+### REST
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://example.test/api.php?action=brain%20info&slug=default"
+```
+Returns `status=ok` with the project/entity summary for the active brain.
+
+### PHP
+```php
+$response = AavionDB::run('brain validate', ['slug' => 'default']);
+```
+
+## Error Handling
+- Missing slug for commands that require one (`brain switch`, `brain backup`, `brain info`) triggers `status=error` with message `Parameter "slug" is required.`
+- Referencing a non-existent brain raises `status=error` with an explanatory message from `BrainRepository`.
+- Backups surface filesystem issues via `meta.exception` while logging the underlying error.
 - Parser handler rewrites human-friendly statements (`brain init foo`) to structured commands + parameters.
 - Backups are stored under `user/backups/`; PathLocator now ensures the directory exists.
 - Diagnostics include footprint metrics (bytes + entity-version count) consumed by CoreAgent `status`.

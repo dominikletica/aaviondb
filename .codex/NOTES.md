@@ -3,6 +3,29 @@
 > Maintainer: Codex (GPT-5)  
 > Purpose: Track implementation decisions, open questions, and follow-up tasks during core development.
 
+## TODO Overview
+
+### Core Platform
+- [x] Flesh out `BrainRepository` with entity/project CRUD and hash handling.
+- [ ] Add diagnostics coverage / automated checks for brain integrity (tests + tooling).
+- [x] Define module registration workflow for parser handlers via `CommandRegistry`.
+- [ ] Ship system log module (`log view/rotate/cleanup`).
+- [ ] Complete security documentation (`docs/dev/partials/security.md`).
+
+### Module Checklist
+- **Shared tasks**: [ ] Standardise manifest/module scaffolding for remaining modules; [ ] emit diagnostics + logging hooks; [ ] add PHPUnit coverage once prototype stabilises.
+- **CoreAgent (`core`)**: [x] Implement `status`, `diagnose`, `help` with metadata.
+- **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [ ] add compaction/repair utilities; [ ] optional cleanup command for inactive versions.
+- **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [ ] cascade coordination with EntityAgent.
+- **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
+- **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [ ] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
+- **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] integrate audit logging + bootstrap key guidance; [ ] prepare scoped key/role management.
+- **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] batched/async hooks.
+- **UiAgent (`ui`)**: [ ] Studio integration hooks; [ ] optional console stubs.
+- **LogAgent (`log`)**: [ ] Operational log commands; [ ] log storage abstraction.
+- **EventsAgent (`events`)**: [ ] Event stream commands/stats; [ ] subscription/feed endpoints.
+- **SchedulerAgent (`scheduler`)** (future): [ ] Job abstraction; [ ] log/audit integration; [ ] CLI management commands.
+
 ## 2025-10-17
 
 - **Canonical JSON & Hashing**  
@@ -52,64 +75,7 @@
 - Documented module scaffolding (directory layout, namespace guidance, manifest schema, command/parameter conventions) and created per-module TODO checklists for upcoming implementation phases.
 - ModuleLoader now auto-loads `classes/` PHP files per module via manual require, ensuring deployments work without Composer.
 
-### Module Implementation Roadmap (WIP)
-
-**Shared tasks (apply to every module)**
-- [ ] Scaffold `system/modules/<slug>/manifest.json` + `module.php` with declared capabilities/dependencies.
-- [ ] Register commands via `CommandRegistry` + parser hooks (consistent naming, unified response schema).
-- [ ] Emit module diagnostics, log meaningful events, update docs/CHANGELOG, and create PHPUnit stubs.
-
-**CoreAgent (`core`)**
-- [ ] Implement `status`, `diagnose`, `help`; provide command metadata for auto-help listings.
-
-**BrainAgent (`brain`)**
-- [x] Commands: `brains`, `brain init`, `brain switch`, `brain backup`, `brain info`, `brain validate` implemented.
-- [ ] Add further maintenance subcommands for compaction/repair (see Roadmap “Brain Integrity Utilities”).
-- [ ] Planned cleanup command to purge inactive versions per brain/project on explicit request.
-
-**ProjectAgent (`project`)**
-- [x] Commands: `project list/create/remove/delete/info` implemented.
-- [x] Update command for project metadata (title/description).
-- [ ] Coordinate cascade effects with EntityAgent for future automation.
-
-**EntityAgent (`entity`)**
-- [x] Commands: `entity list/show/save/delete/restore`; enforce hashing + version semantics.
-- [x] Adopt `@version` / `#commit` selectors.
-- [ ] Coordinate cascade behaviour with ProjectAgent.
-
-**ExportAgent (`export`)**
-- [x] Parser for `export {project} [entity[,entity]]` + optional `@version`/`#hash` selectors.
-- [x] Generate export payloads (project, subsets, or entire brain via `project=*`).
-- [ ] Manage presets/destinations; prepare Scheduler hooks for async exports.
-- [ ] Design export profiles for schema-aware/LLM-optimised output (Roadmap items).
-
-**AuthAgent (`auth`)**
-- [x] Commands: `auth grant/list/revoke/reset` using repository helpers.
-- [ ] Integrate audit logging (LogAgent) + bootstrap key guidance.
-- [ ] Keep token storage ready for scoped keys / role sets (Access Control Extensions).
-
-**ApiAgent (`api`)**
-- [x] Commands: `api serve/stop/status/reset`; validate REST readiness before enabling.
-- [ ] Expose hooks for batched/asynchronous actions (Enhanced REST API Layer).
-
-**UiAgent (`ui`)**
-- [ ] Provide integration hooks for the standalone **AavionStudio** UI project.
-- [ ] Optional minimal console stubs only if required for diagnostics.
-
-**LogAgent (`log`)**
-- [ ] Commands: `log view <level>`, `log rotate`, `log cleanup` with filters/pagination.
-- [ ] Integrate with future log storage abstraction.
-
-**EventsAgent (`events`)**
-- [ ] Commands: `events list`, `events stats`, optional subscription hooks; surface EventBus telemetry.
-- [ ] Offer data feed endpoints for future live event monitor/WebSocket bridge.
-
-**SchedulerAgent (`scheduler`)** *(future)*
-- [ ] Define scheduled job abstraction (cron-like spec + persistence).
-- [ ] Hook into LogAgent for execution audits and expose registration API for other modules.
-- [ ] Provide CLI commands (`scheduler list`, `scheduler run`, `scheduler enable/disable`) for cron/automation integration.
-
-> Next up after the break: begin with **CoreAgent** to establish baseline command conventions; other modules will follow in the listed order unless priorities shift.
+> Legacy module roadmap moved to the TODO overview at the top of this document.
 
 ## 2025-10-18 – Evening Session
 
@@ -127,3 +93,7 @@
 - Added ExportAgent baseline: parser + command wire up exports for single/all projects, entity/commit selectors, and payload aggregation; documentation and README updated with usage and response structure.
 - Extended ProjectAgent to store project descriptions and expose `project update`; ExportAgent now accepts per-export descriptions, emits guide/policy blocks, and only includes the requested (or active) entity versions in each slice.
 - ExportAgent payload shape unified (`project.items[*]`) with multi-project CSV support, preset-driven selectors/transformers, CLI usage hints, and deterministic counts/hashes for cache-aware LLM ingest.
+
+## 2025-10-19 – Afternoon Session
+
+- Session kickoff: document preset roadmap and track regex filter support for export payload matching.

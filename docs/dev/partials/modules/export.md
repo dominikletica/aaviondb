@@ -158,6 +158,30 @@
 - **Version entry**  
   - `version`, `status`, `hash`, `commit`, `committed_at`, `payload`, optional `meta`, optional `selectors`
 
+## Examples
+
+### CLI
+```bash
+php cli.php "export demo hero,intro@2 description=\"Story slice\" usage=\"Focus on hero arcs\""
+```
+
+### REST
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://example.test/api.php?action=export&project=demo&entities=hero,intro@2"
+```
+
+### PHP
+```php
+$response = AavionDB::run('export', [
+    'project' => 'demo',
+    'entities' => 'hero,intro@2',
+    'description' => 'Slice for dialogue scenes',
+]);
+```
+
+All variants yield the JSON envelope described above.
+
 ## Implementation Notes
 - Module lives in `system/modules/export`; manifests declare parser + storage capabilities.
 - Parser normalises shorthand (`export demo foo,bar@2`), accepts optional description/usage text, and supports comma-separated project slugs as well as the wildcard `*`.
@@ -187,6 +211,14 @@
 - `selection.entities` accepts the same syntax as the CLI (slug, `@version`, `#commit`). `selection.payload.path` uses dot-notation relative to the version payload (e.g. `export`, `chapters.0.title`) and compares the value via `equals`.  
 - `transform.whitelist` keeps only the listed payload fields (dot-paths), while `transform.blacklist` removes fields. Whitelist is applied first, then blacklist.  
 - To extend the schema, adjust `ExportAgent::loadPreset()` and the related helpers (`preparePayloadFilter`, `prepareTransform`) – the Studio UI will adhere to the same structure.
+
+## Error Handling
+- Wildcard exports plus selectors → `Entity selectors are not supported when exporting all projects.`
+- Multiple projects plus selectors → `Entity selectors are only supported when exporting a single project.`
+- Preset + selectors → `Entity selectors cannot be combined with preset-based exports.`
+- Unknown preset → `Preset "<name>" not found (expected <path>).`
+- Invalid preset JSON → `Preset "<name>" contains invalid JSON: …` (REST → 400, CLI/PHP surface `meta.exception`).
+- Payload filter mismatch via preset simply skips the entity version; if all versions are filtered out, the entity is omitted from the slice.
 
 ## Outstanding Tasks
 - [ ] Add export presets/destination management (disk writes, streaming backends).

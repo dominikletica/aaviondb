@@ -21,14 +21,15 @@
 6. [Logging & Diagnostics](#-logging--diagnostics)  
 7. [Agents & Command Registry](#-agents--command-registry)  
 8. [REST API Layer](#-rest-api-layer)  
-9. [UI & Web Console](#-ui--web-console)  
-10. [Entry Points](#-entry-points)  
-11. [Authentication & API Keys](#-authentication--api-keys)  
-12. [Versioning & Commit Hashes](#-versioning--commit-hashes)  
-13. [Hooks, Events & Listeners](#-hooks-events--listeners)  
-14. [Extending AavionDB](#-extending-aaviondb)  
-15. [Security & Permissions](#-security--permissions)  
-16. [Appendix](#-appendix)
+9. [Error Handling](#-error-handling)  
+10. [UI & Web Console](#-ui--web-console)  
+11. [Entry Points](#-entry-points)  
+12. [Authentication & API Keys](#-authentication--api-keys)  
+13. [Versioning & Commit Hashes](#-versioning--commit-hashes)  
+14. [Hooks, Events & Listeners](#-hooks-events--listeners)  
+15. [Extending AavionDB](#-extending-aaviondb)  
+16. [Security & Permissions](#-security--permissions)  
+17. [Appendix](#-appendix)
 
 ---
 
@@ -54,7 +55,10 @@
 - [`docs/dev/partials/agents-and-command-registry.md`](./partials/agents-and-command-registry.md) *(DRAFT)*
 
 ## 🌐 REST API Layer
-- [`docs/dev/partials/rest-api.md`](./partials/rest-api.md) *(DRAFT)*
+- [`docs/dev/partials/rest-api.md`](./partials/rest-api.md) *(DRAFT)* 
+
+## 🚨 Error Handling
+- [`docs/dev/partials/error-handling.md`](./partials/error-handling.md) – response envelope, HTTP codes, and common error messages.
 
 ## 🎨 UI & Web Console
 - [`docs/dev/partials/ui-console.md`](./partials/ui-console.md) *(DRAFT)*

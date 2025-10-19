@@ -22,6 +22,46 @@
 - `BrainRepository` persists title/description metadata (`createProject`, `updateProjectMetadata`) so exports and LLM guides can surface author-provided context.
 - Reports expose `description`, `entity_count`, and `version_count` to assist diagnostics/UI layers.
 
+## Examples
+
+### CLI
+```bash
+php cli.php "project create demo title=\"Storyworld\" description=\"Narrative workspace\""
+```
+```json
+{
+  "status": "ok",
+  "action": "project create",
+  "message": "Project \"demo\" created.",
+  "data": {
+    "project": {
+      "slug": "demo",
+      "title": "Storyworld",
+      "description": "Narrative workspace",
+      "entity_count": 0,
+      "version_count": 0
+    }
+  }
+}
+```
+
+### REST
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://example.test/api.php?action=project%20info&slug=demo"
+```
+Returns the same payload as the CLI with HTTP 200.
+
+### PHP
+```php
+$response = AavionDB::run('project list');
+```
+
+## Error Handling
+- Attempting to create a duplicate slug returns `status=error` with message `Project "<slug>" already exists.` (REST → 400).
+- Missing `slug` parameter for `project update/remove/delete/info` yields `status=error` with the corresponding “Parameter "slug" is required.” message.
+- Hard delete (`project delete`) propagates storage exceptions (e.g. filesystem failures) via `meta.exception`.
+
 ## Outstanding Tasks
 - [ ] Coordinate with `EntityAgent` for optional cascade operations (e.g. archiving entities on project removal).
 - [ ] Implement `project cleanup` if we later add automatic purging for archived entities.

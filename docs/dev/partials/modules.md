@@ -172,10 +172,10 @@ return [
 > Implementation TODOs are tracked centrally in `.codex/NOTES.md`.
 
 ### Module Documentation Stubs
-- [`modules/core.md`](./modules/core.md) – CoreAgent details *(draft)*
-- [`modules/brain.md`](./modules/brain.md) – BrainAgent *(draft)*
+- [`modules/core.md`](./modules/core.md) – CoreAgent details
+- [`modules/brain.md`](./modules/brain.md) – BrainAgent
 - [`modules/project.md`](./modules/project.md) – ProjectAgent
-- [`modules/entity.md`](./modules/entity.md) – EntityAgent *(draft)*
+- [`modules/entity.md`](./modules/entity.md) – EntityAgent
 - [`modules/export.md`](./modules/export.md) – ExportAgent
 - [`modules/auth.md`](./modules/auth.md) – AuthAgent
 - [`modules/api.md`](./modules/api.md) – ApiAgent
