@@ -17,9 +17,18 @@
 
 ---
 
+## Session Boot Checklist
+- Review `.codex/NOTES.md` before coding: align the TODO overview with repository reality, add any missing tasks, and open the next session entry in the worklog timeline.
+- Scan developer documentation (`docs/dev/**`, `README.md`, module partials) for pending updates; correct discrepancies immediately or flag them in the TODO list when larger follow-up is needed.
+- Ensure visible repository text remains English and terminology stays consistent; schedule clean-up work whenever foreign-language fragments appear.
+- Reconfirm the operating rules in this guide and cross-check sandbox/approval notes so upcoming commands follow the expected constraints.
+
+---
+
 ## Codex Workflow Guidance
-- Keep documentation canonical: update relevant partials under `docs/dev/partials/` and `docs/dev/partials/core-architecture.md` whenever behaviour changes. Flag drafts explicitly.
-- Record architectural decisions and outstanding TODOs in [`.codex/NOTES.md`](./NOTES.md); summarise user-facing changes in [`CHANGELOG.md`](../CHANGELOG.md).
+- Keep documentation canonical: update relevant partials under `docs/dev/partials/`, `docs/dev/MANUAL.md`, and this file whenever behaviour changes. Flag drafts explicitly and clear them as soon as implementations land.
+- Maintain [`.codex/NOTES.md`](./NOTES.md) as the authoritative worklog: promote completed items out of the TODO overview, capture new follow-ups, and close out sessions with concise outcomes.
+- Cross-check code and documents after every feature or refactor; update docs immediately or log the mismatch (with owner and next steps) in the TODO list.
 - Prefer non-throwing flows: wrap operations in `try/catch`, log via Monolog, return unified `CommandResponse` payloads.
 - Maintain consistent entry-point behaviour (REST/CLI/PHP) and ensure tests/diagnostics are updated alongside code.
 - When adding modules/commands, document them in the appropriate partial and note follow-up items (tests, security review, UI integration).

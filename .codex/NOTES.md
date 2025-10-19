@@ -18,13 +18,15 @@
 - **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [ ] add compaction/repair utilities; [ ] optional cleanup command for inactive versions.
 - **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [ ] cascade coordination with EntityAgent.
 - **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
+- **EntityAgent (`entity`)** (upcoming): [ ] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge).
 - **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [ ] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
 - **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] integrate audit logging + bootstrap key guidance; [ ] prepare scoped key/role management.
 - **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] batched/async hooks.
 - **UiAgent (`ui`)**: [ ] Studio integration hooks; [ ] optional console stubs.
-- **LogAgent (`log`)**: [ ] Operational log commands; [ ] log storage abstraction.
+- **LogAgent (`log`)**: [x] Tail/framework log filtering; [ ] rotation/cleanup commands; [ ] log storage abstraction.
 - **EventsAgent (`events`)**: [ ] Event stream commands/stats; [ ] subscription/feed endpoints.
 - **SchedulerAgent (`scheduler`)** (future): [ ] Job abstraction; [ ] log/audit integration; [ ] CLI management commands.
+- **SchemaAgent (`schema`)** (planned): [ ] Manage project `fieldsets` brain; [ ] enforce JSON-Schema validation via `:schema` selectors during entity saves; [ ] document merge order with EntityAgent incremental updates.
 
 ## 2025-10-17
 
@@ -97,3 +99,11 @@
 ## 2025-10-19 – Afternoon Session
 
 - Session kickoff: document preset roadmap and track regex filter support for export payload matching.
+
+### Design Notes – Entity Partial Saves & Schema Validation
+- Merge flow: load the current active entity version, deep-copy its payload, overlay incoming fields (associative arrays merge recursively, indexed arrays replace wholesale), and treat explicit empty strings/nulls/empty arrays as deletion markers (remove key from merged payload).
+- Persisted version: after merge, rebuild canonical JSON, compute hash, and append as the next version so history stays complete; include a `merge` flag in the version metadata for diagnostics.
+- Determinism: REST/CLI clients should send only changed fields; deletions must pass explicit empties to avoid accidental data loss. Document the contract in MANUAL + API reference.
+- Fieldset handling: entity metadata gains `fieldset` (schema ID). On save, resolve `fieldsets` project inside the active brain, load schema payload (standard JSON Schema), and validate the merged payload. Missing optional fields get auto-filled with empty values defined by schema defaults or type-appropriate fallbacks.
+- Validation lifecycle: schema entities linted against JSON Schema meta-schema on write; entity save aborts with structured error if fieldset not found, schema invalid, or merged payload fails validation.
+- Open questions: decide where merge/delete semantics live (`BrainRepository::mergeEntityPayload` vs EntityAgent), ensure concurrency safety (optimistic lock via last hash), and extend logs/diagnostics to surface merge + schema failures for future tests.

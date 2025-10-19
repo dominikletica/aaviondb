@@ -180,7 +180,7 @@ return [
 - [`modules/auth.md`](./modules/auth.md) – AuthAgent
 - [`modules/api.md`](./modules/api.md) – ApiAgent
 - [`modules/ui.md`](./modules/ui.md) – UiAgent *(draft)*
-- [`modules/log.md`](./modules/log.md) – LogAgent *(draft)*
+- [`modules/log.md`](./modules/log.md) – LogAgent
 - [`modules/events.md`](./modules/events.md) – EventsAgent *(draft)*
 - [`modules/scheduler.md`](./modules/scheduler.md) – SchedulerAgent *(draft)*
 

@@ -6,6 +6,7 @@ namespace AavionDB\Core\Security;
 
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
+use Psr\Log\LogLevel;
 
 /**
  * Handles authentication state and guards REST access.
@@ -41,7 +42,7 @@ final class AuthManager
         $token = $token !== null ? \trim($token) : '';
 
         if ($this->allowsAdminSecret($token)) {
-            $this->logger->notice('REST access granted via admin secret.', ['action' => $action]);
+            $this->log(LogLevel::NOTICE, 'REST access granted via admin secret.', ['action' => $action]);
 
             $scope = $this->defaultScope();
 
@@ -64,7 +65,7 @@ final class AuthManager
         try {
             $state = $this->brains->systemAuthState();
         } catch (\Throwable $exception) {
-            $this->logger->error('Unable to load authentication state.', ['exception' => $exception]);
+            $this->log(LogLevel::ERROR, 'Unable to load authentication state.', ['exception' => $exception]);
 
             return [
                 'allowed' => false,
@@ -115,7 +116,7 @@ final class AuthManager
             : 'admin';
 
         if (\hash_equals($bootstrapKey, $token)) {
-            $this->logger->notice('REST bootstrap token usage blocked.', ['action' => $action]);
+            $this->log(LogLevel::NOTICE, 'REST bootstrap token usage blocked.', ['action' => $action]);
 
             return [
                 'allowed' => false,
@@ -131,7 +132,7 @@ final class AuthManager
 
         $lookup = $this->locateToken($auth['keys'] ?? [], $token);
         if ($lookup === null) {
-            $this->logger->warning('REST access denied for unknown token.', ['action' => $action]);
+            $this->log(LogLevel::WARNING, 'REST access denied for unknown token.', ['action' => $action]);
 
             return [
                 'allowed' => false,
@@ -146,7 +147,7 @@ final class AuthManager
         }
 
         if (\strtolower($lookup['status'] ?? 'active') !== 'active') {
-            $this->logger->notice('REST access attempted with inactive token.', [
+            $this->log(LogLevel::NOTICE, 'REST access attempted with inactive token.', [
                 'action' => $action,
                 'token' => $lookup['hash'] ?? null,
                 'status' => $lookup['status'] ?? null,
@@ -169,7 +170,7 @@ final class AuthManager
         try {
             $this->brains->touchAuthKey($lookup['hash'], $lookup['token_preview'] ?? $this->preview($token));
         } catch (\Throwable $exception) {
-            $this->logger->warning('Failed to record token usage.', [
+            $this->log(LogLevel::WARNING, 'Failed to record token usage.', [
                 'action' => $action,
                 'token' => $lookup['hash'] ?? null,
                 'exception' => $exception,
@@ -309,7 +310,7 @@ final class AuthManager
         }
 
         if (!\str_starts_with($secret, '_') || \strlen($secret) < 8) {
-            $this->logger->warning('Configured admin secret is invalid (must start with "_" and be at least 8 characters).');
+            $this->log(LogLevel::WARNING, 'Configured admin secret is invalid (must start with "_" and be at least 8 characters).');
 
             return '';
         }
@@ -320,5 +321,14 @@ final class AuthManager
     private function allowsAdminSecret(string $token): bool
     {
         return $this->adminSecret !== '' && $token !== '' && \hash_equals($this->adminSecret, $token);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function log(string $level, string $message, array $context = []): void
+    {
+        $context['category'] = 'AUTH';
+        $this->logger->log($level, $message, $context);
     }
 }

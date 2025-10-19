@@ -1,0 +1,14 @@
+{
+    "name": "Log Agent",
+    "slug": "log",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Inspect Monolog output with runtime filters.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "paths.read",
+        "logger.use"
+    ]
+}

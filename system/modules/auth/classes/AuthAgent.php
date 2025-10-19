@@ -9,6 +9,7 @@ use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
+use Psr\Log\LogLevel;
 use Throwable;
 
 final class AuthAgent
@@ -205,7 +206,7 @@ final class AuthAgent
 
             return CommandResponse::success('auth grant', $payload, 'API token generated.');
         } catch (Throwable $exception) {
-            $this->logger->error('Failed to grant auth token', [
+            $this->log(LogLevel::ERROR, 'Failed to grant auth token', [
                 'scope' => $scope,
                 'projects' => $projects,
                 'exception' => $exception,
@@ -247,7 +248,7 @@ final class AuthAgent
                 'items' => $items,
             ], 'Registered API tokens');
         } catch (Throwable $exception) {
-            $this->logger->error('Failed to list auth tokens', ['exception' => $exception]);
+            $this->log(LogLevel::ERROR, 'Failed to list auth tokens', ['exception' => $exception]);
 
             return CommandResponse::error('auth list', $exception->getMessage(), [
                 'exception' => [
@@ -279,7 +280,7 @@ final class AuthAgent
                 'identifier' => $identifier,
             ], 'Token revoked.');
         } catch (Throwable $exception) {
-            $this->logger->error('Failed to revoke token', [
+            $this->log(LogLevel::ERROR, 'Failed to revoke token', [
                 'identifier' => $identifier,
                 'exception' => $exception,
             ]);
@@ -300,7 +301,7 @@ final class AuthAgent
 
             return CommandResponse::success('auth reset', $result, 'All tokens revoked; REST API disabled.');
         } catch (Throwable $exception) {
-            $this->logger->error('Failed to reset auth tokens', ['exception' => $exception]);
+            $this->log(LogLevel::ERROR, 'Failed to reset auth tokens', ['exception' => $exception]);
 
             return CommandResponse::error('auth reset', $exception->getMessage(), [
                 'exception' => [
@@ -344,5 +345,14 @@ final class AuthAgent
         }
 
         return $filtered === [] ? ['*'] : $filtered;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function log(string $level, string $message, array $context = []): void
+    {
+        $context['category'] = 'AUTH';
+        $this->logger->log($level, $message, $context);
     }
 }

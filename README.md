@@ -87,6 +87,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 |----------|-------------|
 | `help` | Lists all available commands and usage syntax. |
 | `status` / `info` | Displays framework version, memory usage, author info, GitHub link, and active brain. |
+| `log [level] [limit]` | Tails `aaviondb.log` with filters (`ERROR`, `AUTH`, `DEBUG`, `ALL`) and limit (default 10). |
 
 Commands can be invoked universally across interfaces:
 
