@@ -36,12 +36,12 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `list entities <project>` / `entity list <project>` | List entities belonging to a project. |
 | `list versions <project> <entity>` / `entity versions <project> <entity>` | Enumerate versions for an entity. |
 | `list commits <project> [entity] [limit=50]` / `project commits …` | Show recent commits (optionally filtered by entity). |
-| `show <project> <entity[@version|#commit]>` / `entity show …` | Render the active or selected entity version as JSON. |
-| `save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {payload}` / `entity save …` | Create or merge a new entity version (supports partial payload updates and schema selectors). |
+| `show <project> <entity[@version or #commit]>` / `entity show …` | Render the active or selected entity version as JSON. |
+| `save <project> <entity[@version or #commit][:fieldset[@version or #commit]]> {payload}` / `entity save …` | Create or merge a new entity version (supports partial payload updates and schema selectors). |
 | `remove <project> <entity[,entity2]>` / `entity remove …` | Deactivate the active version(s) without purging history. |
 | `delete <project> <entity[,entity2]>` / `entity delete …` | Permanently delete entities (all versions and commits). |
 | `delete <project> <entity@version[,entity2#commit]>` | Remove specific versions or commits without deleting the entity. |
-| `restore <project> <entity> <@version|#commit>` / `entity restore …` | Reactivate an archived version. |
+| `restore <project> <entity> <@version or #commit>` / `entity restore …` | Reactivate an archived version. |
 
 ### Project Management
 | Command | Description |
@@ -67,7 +67,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 ### Export Commands
 | Command | Description |
 |----------|-------------|
-| `export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="..."] [usage="..."] [preset]` | Generate deterministic JSON exports for one or multiple projects/entities (supports presets and guidance fields). |
+| `export <project[,project…] or *> [entity[,entity[@version or #commit]]] [description="..."] [usage="..."] [preset]` | Generate deterministic JSON exports for one or multiple projects/entities (supports presets and guidance fields). |
 
 ### Configuration & Key-Value Store
 | Command | Description |
@@ -80,7 +80,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 |----------|-------------|
 | `auth grant [label="..."] [projects=...]` | Issue a scoped API token (default scope `*`). |
 | `auth list` | List existing tokens with metadata. |
-| `auth revoke <token|preview>` | Revoke a token via full value or preview. |
+| `auth revoke <token or preview>` | Revoke a token via full value or preview. |
 | `auth reset` | Reset authentication state to bootstrap defaults. |
 
 ### REST API Control
@@ -123,17 +123,17 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | Command | Description |
 |----------|-------------|
 | `schema list [with_versions=1]` | List fieldset schemas with optional version metadata. |
-| `schema show <slug[@version|#commit]>` | Show a schema revision (defaults to the active version). |
+| `schema show <slug[@version or #commit]>` | Show a schema revision (defaults to the active version). |
 | `schema lint {json}` | Validate a JSON Schema payload before persisting it. |
 | `schema create <slug> {json}` | Create a new schema entity. |
-| `schema update <slug> {json} [--merge=0|1]` | Update an existing schema (default is replace, `--merge=1` merges). |
-| `schema save <slug> {json} [--merge=0|1]` | Upsert helper that creates the schema when missing. |
-| `schema delete <slug> [@version|#commit]` | Delete a schema or a specific revision. |
+| `schema update <slug> {json} [--merge=0 or 1]` | Update an existing schema (default is replace, `--merge=1` merges). |
+| `schema save <slug> {json} [--merge=0 or 1]` | Upsert helper that creates the schema when missing. |
+| `schema delete <slug> [@version or #commit]` | Delete a schema or a specific revision. |
 
 ### Logging
 | Command | Description |
 |----------|-------------|
-| `log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]` | Tail the framework log with optional level and limit filters. |
+| `log [level=ERROR or AUTH or DEBUG or ALL] [limit=10]` | Tail the framework log with optional level and limit filters. |
 | `log rotate [keep=10]` | Rotate the active log file and keep only the most recent archives. |
 | `log cleanup [keep=10]` | Delete archived log files beyond the retention threshold. |
 
@@ -146,10 +146,14 @@ Commands can be invoked universally across interfaces:
 
 REST:
 ```bash
-GET api.php?command
+POST api.php?command
 {
 "list projects"
 }
+```
+or
+```bash
+GET api.php?action=list&scope=projects
 ```
 
 PHP:
@@ -157,6 +161,8 @@ PHP:
 require __DIR__ . '/aaviondb.php';
 
 AavionDB::command('list projects');
+// or for more control:
+AavionDB::run('list', ['scope' => 'projects',]);
 ```
 
 CLI:
@@ -165,6 +171,7 @@ php api.php list projects
 ```
 
 Note: The preferred method is to use a parametric approach passing parameters and values: `brain`, `project`, `entity`, `ref`, `payload`, ...
+All available commands and parameters can be found in the developers manual -> [MANUAL.md](docs/dev/MANUAL.md)
 
 ---
 
