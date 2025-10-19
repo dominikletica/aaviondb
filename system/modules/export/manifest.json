@@ -1,0 +1,15 @@
+{
+    "name": "Export Agent",
+    "slug": "export",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Generate JSON exports for brains, projects, and entities.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "logger.use",
+        "container.access"
+    ]
+}

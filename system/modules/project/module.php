@@ -15,9 +15,14 @@ return [
             'usage' => 'project list',
         ],
         'project create' => [
-            'description' => 'Create a new project (optionally with title).',
+            'description' => 'Create a new project (optionally with title/description).',
             'group' => 'project',
-            'usage' => 'project create <slug> [title="My Project"]',
+            'usage' => 'project create <slug> [title="My Project"] [description="Project description"]',
+        ],
+        'project update' => [
+            'description' => 'Update project metadata (title/description).',
+            'group' => 'project',
+            'usage' => 'project update <slug> [title="New Title"] [description="New description"]',
         ],
         'project remove' => [
             'description' => 'Archive a project (soft delete).',

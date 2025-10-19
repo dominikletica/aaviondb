@@ -215,7 +215,7 @@ final class BrainRepository
     /**
      * Creates a new project within the active brain.
      */
-    public function createProject(string $projectSlug, ?string $title = null): array
+    public function createProject(string $projectSlug, ?string $title = null, ?string $description = null): array
     {
         $slug = $this->normalizeKey($projectSlug);
         $brain = $this->loadActiveBrain();
@@ -233,6 +233,9 @@ final class BrainRepository
         if ($title !== null && $title !== '') {
             $project['title'] = $title;
         }
+        if ($description !== null && $description !== '') {
+            $project['description'] = $description;
+        }
 
         $brain['projects'][$slug] = $project;
         $brain['meta']['updated_at'] = $timestamp;
@@ -243,6 +246,7 @@ final class BrainRepository
         $this->events->emit('brain.project.created', [
             'project' => $slug,
             'title' => $project['title'],
+            'description' => $project['description'] ?? null,
         ]);
 
         return $this->projectReport($slug, false);
@@ -324,6 +328,62 @@ final class BrainRepository
         }
 
         return $summary;
+    }
+
+    /**
+     * Updates project metadata (title/description) and returns the refreshed summary.
+     *
+     * @return array<string, mixed>
+     */
+    public function updateProjectMetadata(string $projectSlug, ?string $title = null, ?string $description = null): array
+    {
+        if ($title === null && $description === null) {
+            return $this->projectReport($projectSlug, false);
+        }
+
+        $slug = $this->normalizeKey($projectSlug);
+        $this->assertWriteAllowed($slug);
+
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slug]) || !\is_array($brain['projects'][$slug])) {
+            throw new StorageException(\sprintf('Project "%s" does not exist.', $projectSlug));
+        }
+
+        $project = &$brain['projects'][$slug];
+        $changed = false;
+
+        if ($title !== null) {
+            $normalized = \trim($title);
+            $project['title'] = $normalized === '' ? $slug : $normalized;
+            $changed = true;
+        }
+
+        if ($description !== null) {
+            $normalized = \trim($description);
+            $project['description'] = $normalized === '' ? null : $normalized;
+            $changed = true;
+        }
+
+        if (!$changed) {
+            return $this->projectReport($slug, false);
+        }
+
+        $timestamp = $this->timestamp();
+        $project['updated_at'] = $timestamp;
+        $brain['projects'][$slug] = $project;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.project.updated', [
+            'project' => $slug,
+            'title' => $project['title'] ?? null,
+            'description' => $project['description'] ?? null,
+        ]);
+
+        return $this->projectReport($slug, false);
     }
 
     public function entityReport(string $projectSlug, string $entitySlug, bool $includeVersions = true): array
@@ -2071,6 +2131,7 @@ final class BrainRepository
         return [
             'slug' => $slug,
             'title' => $slug,
+            'description' => null,
             'created_at' => $timestamp,
             'updated_at' => $timestamp,
             'status' => 'active',
@@ -2096,6 +2157,7 @@ final class BrainRepository
         return [
             'slug' => $slug,
             'title' => $project['title'] ?? null,
+            'description' => $project['description'] ?? null,
             'status' => $project['status'] ?? 'active',
             'created_at' => $project['created_at'] ?? null,
             'updated_at' => $project['updated_at'] ?? null,

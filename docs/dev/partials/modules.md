@@ -133,6 +133,7 @@ return [
   - Expose brain config helpers and maintenance tooling (validation/repair)
 - **`ProjectAgent` (`project`)** – Project indexing and metadata
   - Create/list/remove projects
+  - Update project metadata (title/description)
   - Manage project-level metadata and stats
   - Coordinate with entity agent/cascade logic
 - **`EntityAgent` (`entity`)** – Entity versioning workflow
@@ -140,9 +141,9 @@ return [
   - Handle canonical hashing and version history
   - Restore/delete operations using `@version` / `#commit` selectors
 - **`ExportAgent` (`export`)** – Data exports and snapshots
-  - Command syntax (per README): `export {project} [entity[,entity]]` with optional `@version` / `#hash` selectors
-  - Generate JSON slices for whole brains, projects, or entity subsets
-  - Manage export presets, schema-aware profiles, and LLM-ready output
+  - Provides `export <project[,project…]|*>` with optional entity/version selectors
+  - Produces deterministic JSON bundles (`project.items[*]`) with payloads, hashes, and guidance for downstream tooling
+  - TODO: presets/destinations and schema profiles (see module doc)
 - **`AuthAgent` (`auth`)** – API token lifecycle
   - Commands: auth grant/list/revoke/reset
   - Bootstrap key rotation
@@ -173,9 +174,9 @@ return [
 ### Module Documentation Stubs
 - [`modules/core.md`](./modules/core.md) – CoreAgent details *(draft)*
 - [`modules/brain.md`](./modules/brain.md) – BrainAgent *(draft)*
-- [`modules/project.md`](./modules/project.md) – ProjectAgent *(draft)*
+- [`modules/project.md`](./modules/project.md) – ProjectAgent
 - [`modules/entity.md`](./modules/entity.md) – EntityAgent *(draft)*
-- [`modules/export.md`](./modules/export.md) – ExportAgent *(draft)*
+- [`modules/export.md`](./modules/export.md) – ExportAgent
 - [`modules/auth.md`](./modules/auth.md) – AuthAgent
 - [`modules/api.md`](./modules/api.md) – ApiAgent
 - [`modules/ui.md`](./modules/ui.md) – UiAgent *(draft)*

@@ -32,15 +32,17 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `show {entity}` | Displays the currently active version of an entity as structured JSON. |
 | `show {entity(@version or #hash)}` | Displays a specific version or commit of the entity. |
 | `save {project} {entity} {full JSON}` | Saves an entity. If an ID exists, creates a new version and commit; otherwise creates a new entity. Returns version and deterministic commit hash. |
-| `create {project}` | Creates a new project. |
-| `remove {project} [entity]` | Marks the active version as invalid. |
-| `restore {project} [entity(@version or #hash)]` | Reactivates a previous version or commit. |
-| `delete {project} [entity]` | Permanently deletes all versions of a specified project or entity (use with caution). |
+| `project list` | Lists all projects with metadata summaries. |
+| `project create <slug> [title="My Project"] [description="Context"]` | Creates a new project with optional metadata for LLM guidance. |
+| `project update <slug> [title="New Title"] [description="Updated context"]` | Updates project metadata without altering entities. |
+| `project remove <slug>` | Archives a project (soft delete). |
+| `project delete <slug> [purge_commits=1]` | Permanently deletes a project (optionally purging associated commits). |
+| `project info <slug>` | Displays a project snapshot including entity counts. |
 
 ### Export Commands
 | Command | Description |
 |----------|-------------|
-| `export {project} [entities[@version or #hash]]` | Exports a project or subset as JSON for LLM use, including metadata for crawlers and parsers. |
+| `export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="How to use this export"]` | Generates JSON exports (full payloads) for one or more projects (comma-separated) or all projects with `*`, optionally narrowing the slice and providing per-export guidance. |
 
 ---
 

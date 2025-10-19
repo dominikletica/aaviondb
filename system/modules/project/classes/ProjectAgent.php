@@ -44,6 +44,7 @@ final class ProjectAgent
         $this->registerParser();
         $this->registerProjectList();
         $this->registerProjectCreate();
+        $this->registerProjectUpdate();
         $this->registerProjectRemove();
         $this->registerProjectDelete();
         $this->registerProjectInfo();
@@ -73,12 +74,15 @@ final class ProjectAgent
                     $context->setAction('project remove');
                     break;
                 case 'delete':
-                    $context->setAction('project delete');
-                    break;
-                case 'info':
-                    $context->setAction('project info');
-                    break;
-                default:
+                $context->setAction('project delete');
+                break;
+            case 'update':
+                $context->setAction('project update');
+                break;
+            case 'info':
+                $context->setAction('project info');
+                break;
+            default:
                     array_unshift($tokens, $sub);
                     $context->setAction('project info');
                     break;
@@ -147,7 +151,18 @@ final class ProjectAgent
         }, [
             'description' => 'Create a new project (optionally with title).',
             'group' => 'project',
-            'usage' => 'project create <slug> [title="My Project"]',
+            'usage' => 'project create <slug> [title="My Project"] [description="Project description"]',
+        ]);
+    }
+
+    private function registerProjectUpdate(): void
+    {
+        $this->context->commands()->register('project update', function (array $parameters): CommandResponse {
+            return $this->projectUpdateCommand($parameters);
+        }, [
+            'description' => 'Update project metadata (title/description).',
+            'group' => 'project',
+            'usage' => 'project update <slug> [title="New Title"] [description="New description"]',
         ]);
     }
 
@@ -213,9 +228,10 @@ final class ProjectAgent
         }
 
         $title = isset($parameters['title']) ? (string) $parameters['title'] : null;
+        $description = isset($parameters['description']) ? (string) $parameters['description'] : null;
 
         try {
-            $project = $this->brains->createProject($slug, $title);
+            $project = $this->brains->createProject($slug, $title, $description);
 
             return CommandResponse::success('project create', [
                 'project' => $project,
@@ -227,6 +243,44 @@ final class ProjectAgent
             ]);
 
             return CommandResponse::error('project create', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function projectUpdateCommand(array $parameters): CommandResponse
+    {
+        $slug = $this->extractSlug($parameters);
+        if ($slug === null) {
+            return CommandResponse::error('project update', 'Parameter "slug" is required.');
+        }
+
+        $hasTitle = \array_key_exists('title', $parameters);
+        $hasDescription = \array_key_exists('description', $parameters);
+
+        if (!$hasTitle && !$hasDescription) {
+            return CommandResponse::error('project update', 'Specify at least one of "title" or "description".');
+        }
+
+        $title = $hasTitle ? (string) $parameters['title'] : null;
+        $description = $hasDescription ? (string) $parameters['description'] : null;
+
+        try {
+            $project = $this->brains->updateProjectMetadata($slug, $title, $description);
+
+            return CommandResponse::success('project update', [
+                'project' => $project,
+            ], sprintf('Project "%s" updated.', $project['slug']));
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to update project', [
+                'slug' => $slug,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('project update', $exception->getMessage(), [
                 'exception' => [
                     'message' => $exception->getMessage(),
                     'type' => get_class($exception),

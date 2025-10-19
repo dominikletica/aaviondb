@@ -69,6 +69,7 @@
 
 **ProjectAgent (`project`)**
 - [x] Commands: `project list/create/remove/delete/info` implemented.
+- [x] Update command for project metadata (title/description).
 - [ ] Coordinate cascade effects with EntityAgent for future automation.
 
 **EntityAgent (`entity`)**
@@ -77,8 +78,8 @@
 - [ ] Coordinate cascade behaviour with ProjectAgent.
 
 **ExportAgent (`export`)**
-- [ ] Parser for `export {project} [entity[,entity]]` + optional `@version`/`#hash` selectors.
-- [ ] Generate export payloads (project, subsets, or entire brain via `project=*`).
+- [x] Parser for `export {project} [entity[,entity]]` + optional `@version`/`#hash` selectors.
+- [x] Generate export payloads (project, subsets, or entire brain via `project=*`).
 - [ ] Manage presets/destinations; prepare Scheduler hooks for async exports.
 - [ ] Design export profiles for schema-aware/LLM-optimised output (Roadmap items).
 
@@ -123,3 +124,6 @@
 ## 2025-10-19 – Morning Session
 
 - Implemented ApiAgent module with `api serve/stop/status/reset`, including readiness checks, telemetry output, and token reset convenience command; docs and README aligned with the new workflow. Next focus: API scheduling hooks and test coverage for Auth/Api agents.
+- Added ExportAgent baseline: parser + command wire up exports for single/all projects, entity/commit selectors, and payload aggregation; documentation and README updated with usage and response structure.
+- Extended ProjectAgent to store project descriptions and expose `project update`; ExportAgent now accepts per-export descriptions, emits guide/policy blocks, and only includes the requested (or active) entity versions in each slice.
+- ExportAgent payload shape unified (`project.items[*]`) with multi-project CSV support and deterministic counts/hashes for cache-aware LLM ingest.
