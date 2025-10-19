@@ -9,9 +9,9 @@
 - [x] Flesh out `BrainRepository` with entity/project CRUD and hash handling.
 - [ ] Add diagnostics coverage / automated checks for brain integrity (tests + tooling).
 - [x] Define module registration workflow for parser handlers via `CommandRegistry`.
-- [ ] Ship system log module (`log view/rotate/cleanup`).
-- [ ] Complete security documentation (`docs/dev/partials/security.md`).
-- [ ] Instrument rate limiting telemetry & admin bypass tooling for `SecurityManager`.
+- [x] Ship system log module (`log view/rotate/cleanup`).
+- [x] Complete security documentation (`docs/dev/partials/security.md`).
+- [x] Instrument rate limiting telemetry & admin bypass tooling for `SecurityManager`.
 
 ### Module Checklist
 - **Shared tasks**: [ ] Standardise manifest/module scaffolding for remaining modules; [ ] emit diagnostics + logging hooks; [ ] add PHPUnit coverage once prototype stabilises.
@@ -21,16 +21,30 @@
 - **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
 - **EntityAgent (`entity`)**: [x] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge); [x] allow schema selectors to target historical revisions (`fieldset@13` / `#hash`) and evaluate merges against non-active entity versions.
 - **ConfigAgent (`config`)**: [x] `set`/`get` commands for user/system config; [ ] advanced value typing + bulk import/export; [ ] audit trail integration.
-- **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [ ] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
+- **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [x] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
 - **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] integrate audit logging + bootstrap key guidance; [ ] prepare scoped key/role management.
 - **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] batched/async hooks.
 - **UiAgent (`ui`)**: [ ] Studio integration hooks; [ ] optional console stubs.
-- **LogAgent (`log`)**: [x] Tail/framework log filtering; [ ] rotation/cleanup commands; [ ] log storage abstraction.
-- **EventsAgent (`events`)**: [ ] Event stream commands/stats; [ ] subscription/feed endpoints.
+- **LogAgent (`log`)**: [x] Tail/framework log filtering; [x] rotation/cleanup commands; [ ] log storage abstraction.
+- **EventsAgent (`events`)**: [x] Listener diagnostics; [ ] event stream commands/stats; [ ] subscription/feed endpoints.
 - **SchedulerAgent (`scheduler`)**: [x] Task CRUD + log, `cron` execution, REST w/out auth; [ ] retention policies & advanced scheduling.
-- **CacheAgent (`cache`)**: [x] CacheManager wiring with enable/disable/ttl/purge; [ ] expose tag-level diagnostics; [ ] warm cache helpers for heavy exports.
-- **SecurityAgent (`security`)**: [x] Rate limiting + manual lockdown + purge; [ ] whitelist/bypass rules for trusted clients; [ ] telemetry & audit trails.
-- **SchemaAgent (`schema`)**: [x] Baseline list/show/lint commands; [ ] create/update fieldset helpers (wrapper around `entity save fieldsets <slug>` with lint + metadata scaffold); [ ] Studio integration hooks; [ ] cached lint results & metrics.
+- **CacheAgent (`cache`)**: [x] CacheManager wiring with enable/disable/ttl/purge; [x] expose tag-level diagnostics; [ ] warm cache helpers for heavy exports.
+- **SecurityAgent (`security`)**: [x] Rate limiting + manual lockdown + purge; [ ] whitelist/bypass rules for trusted clients; [ ] audit trails.
+- **SchemaAgent (`schema`)**: [x] Baseline list/show/lint commands; [x] create/update/delete fieldset helpers; [ ] Studio integration hooks; [ ] cached lint results & metrics.
+
+### Roadmap to Alpha (pre-tests)
+1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs.
+2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation.
+3. **Configuration upgrades** – Add bulk import/export commands and config audit logging.
+4. **Export destinations & profiles** – Introduce preset destinations (disk/response), scheduler hooks, and schema-aware/LLM profiles.
+5. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
+6. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
+7. **Security controls** – Implement trusted-client whitelists/bypass policies and enforcement audit logs.
+8. **Auth/API improvements** – Add bootstrap guidance, scoped-role groundwork, and REST telemetry counters.
+9. **Events telemetry** – Extend EventsAgent with emitted-event stats and optional streaming hooks.
+10. **Log storage abstraction** – Allow pluggable/archived log storage to support future UI integrations.
+11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs.
+12. **Testing plan** – Design and implement the PHPUnit coverage plan (execute after steps 1–11).
 
 ## 2025-10-17
 
@@ -66,8 +80,8 @@
 - Added foundational module discovery (`ModuleLoader`); descriptors capture manifest/definition metadata and surface diagnostics for both system and user module trees.
 - Command registry now normalises responses, emits `command.executed/failed` diagnostics, and logs unexpected exceptions before returning consistent error payloads.
 - Added REST (`api.php`) and CLI (`cli.php`) entry points with defensive error handling and consistent JSON responses.
-- TODO: System-level log module (commands `log view`, `log rotate`, `log cleanup`, …) to expose/manipulate Monolog output.
-- TODO: Flesh out `docs/dev/partials/security.md` with sandboxing/permission model once defined.
+- DONE: System-level log module (commands `log view`, `log rotate`, `log cleanup`, …) to expose/manipulate Monolog output.
+- DONE: Flesh out `docs/dev/partials/security.md` with sandboxing/permission model once defined.
 
 ## 2025-10-18 – Afternoon Session
 
@@ -121,3 +135,10 @@
 
 - Integrate cache subsystem (CacheManager + CacheAgent) with event-driven invalidation and CLI controls.
 - Add SecurityManager with rate limiting (per-client/global/auth-failure) and SecurityAgent CLI; update REST flow, docs, and TODOs accordingly.
+- Added debug flag plumbing across CLI/REST/PHP; module loggers now emit source/module metadata automatically.
+- Extended LogAgent with `log rotate`/`log cleanup` and added log archive pruning.
+- Cache telemetry now surfaces entry counts, total bytes, tag distribution; security status includes rate-limit cache stats.
+- Export preset payload filters support `matches`/`regex` and `in` operators for richer selection.
+- SchemaAgent gained `create`, `update`, `save`, and `delete` wrappers around the `fieldsets` project.
+- Introduced EventsAgent with `events listeners` for quick EventBus diagnostics.
+- Added `aaviondb.php` PHP entry point consolidating bootstrap for include-based integrations.

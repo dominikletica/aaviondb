@@ -13,6 +13,9 @@ use function array_unshift;
 use function count;
 use function in_array;
 use function strtolower;
+use function str_contains;
+use function str_starts_with;
+use function substr;
 use function trim;
 
 /**
@@ -29,10 +32,67 @@ final class CoreAgent
 
     public function register(): void
     {
+        $this->registerGlobalParsers();
         $this->registerShortcutParsers();
         $this->registerStatusCommand();
         $this->registerDiagnoseCommand();
         $this->registerHelpCommand();
+    }
+
+    private function registerGlobalParsers(): void
+    {
+        $this->context->commands()->registerParserHandler(null, function (ParserContext $context): void {
+            $tokens = $context->tokens();
+            if ($tokens === []) {
+                return;
+            }
+
+            $debug = null;
+            $filtered = [];
+
+            foreach ($tokens as $token) {
+                $normalized = strtolower(trim($token));
+
+                if ($normalized === '--debug' || $normalized === '-d' || $normalized === 'debug') {
+                    $debug = true;
+                    continue;
+                }
+
+                if (str_starts_with($normalized, '--debug=')) {
+                    $value = substr($normalized, 8);
+                    $flag = $this->normalizeDebugValue($value);
+                    if ($flag !== null) {
+                        $debug = $flag;
+                    }
+                    continue;
+                }
+
+                if (str_starts_with($normalized, 'debug=')) {
+                    $value = substr($normalized, 6);
+                    $flag = $this->normalizeDebugValue($value);
+                    if ($flag !== null) {
+                        $debug = $flag;
+                    }
+                    continue;
+                }
+
+                if ($normalized === '--no-debug') {
+                    $debug = false;
+                    continue;
+                }
+
+                $filtered[] = $token;
+            }
+
+            if ($debug !== null) {
+                $context->mergeParameters(['debug' => $debug]);
+                $context->mergeMetadata(['debug' => $debug]);
+            }
+
+            if ($filtered !== $tokens) {
+                $context->setTokens($filtered);
+            }
+        }, 100);
     }
 
     private function registerShortcutParsers(): void
@@ -173,6 +233,25 @@ final class CoreAgent
             'group' => 'core',
             'usage' => 'help [command=name]',
         ]);
+    }
+
+    private function normalizeDebugValue(string $value): ?bool
+    {
+        $value = strtolower(trim($value));
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (in_array($value, ['1', 'true', 'yes', 'y', 'on'], true)) {
+            return true;
+        }
+
+        if (in_array($value, ['0', 'false', 'no', 'n', 'off'], true)) {
+            return false;
+        }
+
+        return null;
     }
 
     private function statusCommand(): CommandResponse

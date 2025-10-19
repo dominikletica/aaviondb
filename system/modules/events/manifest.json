@@ -1,0 +1,14 @@
+{
+    "name": "Events Agent",
+    "slug": "events",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Inspect event bus listener statistics.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "events.dispatch",
+        "logger.use"
+    ]
+}

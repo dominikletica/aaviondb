@@ -341,6 +341,10 @@ final class SchedulerAgent
         $start = microtime(true);
         $results = [];
 
+        $this->context->debug('Scheduler cron started.', [
+            'task_count' => count($tasks),
+        ]);
+
         foreach ($tasks as $task) {
             $slug = $task['slug'] ?? null;
             $command = $task['command'] ?? null;
@@ -352,6 +356,11 @@ final class SchedulerAgent
             $status = 'error';
             $message = null;
             $response = null;
+
+            $this->context->debug('Executing scheduler task.', [
+                'slug' => $slug,
+                'command' => $command,
+            ]);
 
             try {
                 $response = AavionDB::command($command);
@@ -385,10 +394,21 @@ final class SchedulerAgent
 
             $results[] = $result;
             $this->brains->updateSchedulerTaskRun($slug, $status, $this->timestamp(), $message);
+
+            $this->context->debug('Scheduler task finished.', [
+                'slug' => $slug,
+                'status' => $status,
+                'duration_ms' => $durationMs,
+            ]);
         }
 
         $durationMs = (int) ((microtime(true) - $start) * 1000);
         $logEntry = $this->brains->recordSchedulerRun($results, $durationMs);
+
+        $this->context->debug('Scheduler cron completed.', [
+            'task_count' => count($tasks),
+            'duration_ms' => $durationMs,
+        ]);
 
         return CommandResponse::success('cron', [
             'task_count' => count($tasks),

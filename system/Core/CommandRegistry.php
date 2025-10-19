@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AavionDB\Core;
 
+use AavionDB\AavionDB;
 use AavionDB\Core\Exceptions\CommandException;
 use Psr\Log\LoggerInterface;
 
@@ -65,9 +66,27 @@ final class CommandRegistry
         $handler = $entry['handler'];
         $start = \microtime(true);
 
+        if ($this->logger !== null && AavionDB::debugEnabled()) {
+            $this->logger->debug('Dispatching command.', [
+                'action' => $normalized,
+                'parameters' => $parameters,
+                'source' => 'core:command',
+            ]);
+        }
+
         try {
             $result = $handler($parameters);
             $response = CommandResponse::fromPayload($normalized, $result, $parameters);
+
+            if ($this->logger !== null && AavionDB::debugEnabled()) {
+                $this->logger->debug('Command execution completed.', [
+                    'action' => $normalized,
+                    'status' => $response->toArray()['status'] ?? null,
+                    'meta' => $response->toArray()['meta'] ?? [],
+                    'duration_ms' => (int) ((\microtime(true) - $start) * 1000),
+                    'source' => 'core:command',
+                ]);
+            }
 
             $this->emit('command.executed', [
                 'action' => $normalized,
@@ -234,6 +253,8 @@ final class CommandRegistry
 
         $this->logger->error(sprintf('Command "%s" failed: %s', $action, $exception->getMessage()), [
             'exception' => $exception,
+            'action' => $action,
+            'source' => 'core:command',
         ]);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AavionDB\Core\Modules;
 
+use AavionDB\AavionDB;
 use AavionDB\Core\CommandRegistry;
 use AavionDB\Core\Container;
 use AavionDB\Core\EventBus;
@@ -12,6 +13,7 @@ use AavionDB\Core\Cache\CacheManager;
 use AavionDB\Core\Security\AuthManager;
 use AavionDB\Core\Security\SecurityManager;
 use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Logging\ModuleLogger;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 
@@ -31,6 +33,8 @@ final class ModuleContext
     private PathLocator $paths;
 
     private LoggerInterface $logger;
+
+    private ?LoggerInterface $scopedLogger = null;
 
     /**
      * @var array<int, string>
@@ -92,7 +96,11 @@ final class ModuleContext
     {
         $this->assertCapability('logger.use');
 
-        return $this->logger;
+        if ($this->scopedLogger === null) {
+            $this->scopedLogger = new ModuleLogger($this->logger, $this->descriptor->slug());
+        }
+
+        return $this->scopedLogger;
     }
 
     public function brains(): BrainRepository
@@ -113,6 +121,16 @@ final class ModuleContext
         $cache = $this->container->get(CacheManager::class);
 
         return $cache;
+    }
+
+    public function debug(string $message, array $context = []): void
+    {
+        if (!AavionDB::debugEnabled()) {
+            return;
+        }
+
+        $context['debug'] = true;
+        $this->logger()->debug($message, $context);
     }
 
     public function auth(): AuthManager

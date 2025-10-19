@@ -128,6 +128,7 @@ final class SecurityAgent
         $config = $status['config'] ?? [];
         $enabled = (bool) ($config['active'] ?? false);
         $lockdownActive = (bool) ($status['lockdown_active'] ?? false);
+        $telemetry = $status['telemetry'] ?? [];
         $lockdownNote = '';
 
         if ($lockdownActive) {
@@ -147,6 +148,7 @@ final class SecurityAgent
             'lockdown_active' => $lockdownActive,
             'lockdown_until' => $status['lockdown_until'] ?? null,
             'lockdown_reason' => $status['lockdown_reason'] ?? null,
+            'telemetry' => $telemetry,
         ], $message);
     }
 

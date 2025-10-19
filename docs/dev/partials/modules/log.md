@@ -1,20 +1,25 @@
 # LogAgent Module
 
-> Status: Implemented – log inspection for Monolog output.
+> Status: Implemented – log inspection and rotation for Monolog output.
 
 ## Responsibilities
 - Tail `aaviondb.log` with level-based filters.
 - Surface authentication-related entries via the shared log channel (`category=AUTH`).
 - Provide limit-based slicing so CLI/REST calls remain efficient.
+- Rotate and prune archived log files to keep disk usage predictable.
 
-## Command
+## Commands
 - `log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]` – Show the most recent log lines matching the requested level (default `ERROR`) and limit (default `10`).
+- `log rotate [keep=10]` – Rotate the active log file into `aaviondb-YYYYmmdd_HHMMSS.log` and optionally keep only the newest `keep` archives (default 10, `0` removes all archives).
+- `log cleanup [keep=10]` – Delete archived log files beyond the supplied retention threshold without rotating the active file.
 
 ## Implementation Notes
 - Module lives in `system/modules/log`; manifest enables `paths.read` and `logger.use` capabilities.
 - Reads from `system/storage/logs/aaviondb.log` (path configurable via `log_path`).
 - Filters are case-insensitive; `AUTH` relies on log entries tagged with `category=AUTH` (already emitted by AuthManager/AuthAgent).
 - Entries are parsed into structured output: `timestamp`, `channel`, `level`, `message`, `context`, `extra`, `raw`.
+- Rotation simply renames the active log and touches a fresh file; archives follow the naming pattern `aaviondb-<timestamp>.log`.
+- Cleanup enumerates archives via glob and deletes older files beyond the retention threshold.
 
 ## Examples
 
@@ -68,4 +73,4 @@ $response = AavionDB::run('log', [
 - Log file missing → `status=ok`, empty `entries` array, message `Log file not found; no entries to display.`
 - File read errors (permission issues) → `status=error` with `meta.exception` describing the failure.
 
-> Rotation/cleanup commands are planned; see `.codex/NOTES.md` for upcoming tasks.
+> Remaining work: optional compression for archives and streamed tailing (see `.codex/NOTES.md`).

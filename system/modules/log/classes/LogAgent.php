@@ -55,6 +55,8 @@ final class LogAgent
     {
         $this->registerParser();
         $this->registerLogCommand();
+        $this->registerRotateCommand();
+        $this->registerCleanupCommand();
     }
 
     private function registerParser(): void
@@ -63,17 +65,32 @@ final class LogAgent
             $tokens = $context->tokens();
             $parameters = [];
 
+            $subcommand = 'view';
+
             if ($tokens !== []) {
-                $first = $tokens[0];
-                if (!$this->looksLikeNamedArgument($first)) {
-                    $parameters['level'] = array_shift($tokens);
+                $first = trim($tokens[0]);
+                if ($first !== '' && !$this->looksLikeNamedArgument($first)) {
+                    $normalized = strtolower($first);
+                    if (in_array($normalized, ['rotate', 'cleanup'], true)) {
+                        $subcommand = $normalized;
+                        array_shift($tokens);
+                    }
                 }
             }
 
-            if ($tokens !== []) {
-                $maybeLimit = $tokens[0];
-                if (!$this->looksLikeNamedArgument($maybeLimit)) {
-                    $parameters['limit'] = array_shift($tokens);
+            if ($subcommand === 'view') {
+                if ($tokens !== []) {
+                    $first = $tokens[0];
+                    if (!$this->looksLikeNamedArgument($first)) {
+                        $parameters['level'] = array_shift($tokens);
+                    }
+                }
+
+                if ($tokens !== []) {
+                    $maybeLimit = $tokens[0];
+                    if (!$this->looksLikeNamedArgument($maybeLimit)) {
+                        $parameters['limit'] = array_shift($tokens);
+                    }
                 }
             }
 
@@ -88,11 +105,11 @@ final class LogAgent
                     if ($key !== null) {
                         $parameters[$key] = $value;
                     }
-                    continue;
                 }
             }
 
-            $context->setAction('log');
+            $parameters['subcommand'] = $subcommand;
+            $context->setAction('log ' . $subcommand);
             $context->mergeParameters($parameters);
             $context->setTokens([]);
         }, 10);
@@ -100,12 +117,42 @@ final class LogAgent
 
     private function registerLogCommand(): void
     {
-        $this->context->commands()->register('log', function (array $parameters): CommandResponse {
+        $this->context->commands()->register('log view', function (array $parameters): CommandResponse {
             return $this->logCommand($parameters);
         }, [
             'description' => 'Tail the framework log with optional level and limit filters.',
             'group' => 'log',
             'usage' => 'log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]',
+        ]);
+
+        $this->context->commands()->register('log', function (array $parameters): CommandResponse {
+            return $this->logCommand($parameters);
+        }, [
+            'description' => 'Alias for "log view".',
+            'group' => 'log',
+            'usage' => 'log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]',
+        ]);
+    }
+
+    private function registerRotateCommand(): void
+    {
+        $this->context->commands()->register('log rotate', function (array $parameters): CommandResponse {
+            return $this->rotateCommand($parameters);
+        }, [
+            'description' => 'Rotate the primary log file and optionally prune older archives.',
+            'group' => 'log',
+            'usage' => 'log rotate [keep=10]',
+        ]);
+    }
+
+    private function registerCleanupCommand(): void
+    {
+        $this->context->commands()->register('log cleanup', function (array $parameters): CommandResponse {
+            return $this->cleanupCommand($parameters);
+        }, [
+            'description' => 'Remove archived log files beyond a retention threshold.',
+            'group' => 'log',
+            'usage' => 'log cleanup [keep=10]',
         ]);
     }
 
@@ -173,6 +220,89 @@ final class LogAgent
             'path' => $logFile,
             'entries' => $entries,
         ], $message);
+    }
+
+    private function rotateCommand(array $parameters): CommandResponse
+    {
+        $keep = $this->toInt($parameters['keep'] ?? 10, 0);
+        if ($keep < 0) {
+            return CommandResponse::error('log rotate', 'Parameter "keep" must not be negative.');
+        }
+
+        $logFile = $this->paths->systemLogs() . DIRECTORY_SEPARATOR . 'aaviondb.log';
+        if (!is_file($logFile)) {
+            return CommandResponse::error('log rotate', 'Log file not found; nothing to rotate.');
+        }
+
+        $timestamp = (new \DateTimeImmutable())->format('Ymd_His');
+        $archiveName = sprintf('aaviondb-%s.log', $timestamp);
+        $archivePath = $this->paths->systemLogs() . DIRECTORY_SEPARATOR . $archiveName;
+
+        if (!@rename($logFile, $archivePath)) {
+            return CommandResponse::error('log rotate', sprintf('Unable to rotate log file to "%s".', $archivePath));
+        }
+
+        @touch($logFile);
+
+        $removed = $this->pruneArchives($keep);
+
+        return CommandResponse::success('log rotate', [
+            'archive' => $archivePath,
+            'removed' => $removed,
+        ], sprintf('Log rotated to %s (removed %d old archives).', basename($archivePath), $removed));
+    }
+
+    private function cleanupCommand(array $parameters): CommandResponse
+    {
+        $keep = $this->toInt($parameters['keep'] ?? 10, 0);
+        if ($keep < 0) {
+            return CommandResponse::error('log cleanup', 'Parameter "keep" must not be negative.');
+        }
+
+        $removed = $this->pruneArchives($keep);
+
+        return CommandResponse::success('log cleanup', [
+            'removed' => $removed,
+        ], sprintf('Removed %d archived log file(s).', $removed));
+    }
+
+    private function pruneArchives(int $keep): int
+    {
+        $pattern = $this->paths->systemLogs() . DIRECTORY_SEPARATOR . 'aaviondb-*.log';
+        $files = glob($pattern);
+        if ($files === false) {
+            return 0;
+        }
+
+        rsort($files);
+
+        if ($keep === 0) {
+            $remove = $files;
+        } else {
+            $remove = array_slice($files, $keep);
+        }
+
+        $removed = 0;
+        foreach ($remove as $file) {
+            if (@unlink($file)) {
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
+    private function toInt($value, int $default): int
+    {
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        if (is_string($value) && trim($value) !== '') {
+            return (int) trim($value);
+        }
+
+        return $default;
     }
 
     /**

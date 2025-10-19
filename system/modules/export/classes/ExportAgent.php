@@ -34,6 +34,7 @@ use function get_class;
 use function implode;
 use function in_array;
 use function is_array;
+use function preg_match;
 use function is_string;
 use function preg_split;
 use function reset;
@@ -278,6 +279,11 @@ final class ExportAgent
     private function buildProjectExport(string $projectSlug, array $targets, ?array $payloadFilter, array $transform): array
     {
         $projectSummary = $this->brains->projectReport($projectSlug, false);
+        $this->context->debug('Building project export.', [
+            'project' => $projectSlug,
+            'targets' => array_map(static fn (array $target): string => $target['original'] ?? $target['slug'], $targets),
+            'payload_filter' => $payloadFilter,
+        ]);
         $entities = $this->brains->listEntities($projectSlug);
         $entitySlugs = array_keys($entities);
 
@@ -328,6 +334,12 @@ final class ExportAgent
             'entities' => $entityExports,
         ];
 
+        $this->context->debug('Project export complete.', [
+            'project' => $projectSlug,
+            'entity_count' => count($entityExports),
+            'version_count' => $versionCount,
+        ]);
+
         return [
             'project' => $projectData,
             'entity_count' => count($entityExports),
@@ -344,6 +356,13 @@ final class ExportAgent
         $versions = isset($summary['versions']) && is_array($summary['versions'])
             ? $summary['versions']
             : [];
+
+        $this->context->debug('Building entity export.', [
+            'project' => $projectSlug,
+            'entity' => $entitySlug,
+            'targets' => array_map(static fn (array $target): string => $target['original'] ?? $target['slug'], $targets),
+            'payload_filter' => $payloadFilter,
+        ]);
 
         $versionsByVersion = [];
         $versionsByCommit = [];
@@ -453,6 +472,12 @@ final class ExportAgent
             $payload = $record['payload'] ?? null;
 
             if ($applyPayloadFilter && !$this->payloadMatchesFilter($payload, $payloadFilter)) {
+                $this->context->debug('Skipping version due to payload filter.', [
+                    'project' => $projectSlug,
+                    'entity' => $entitySlug,
+                    'version' => $meta['version'] ?? null,
+                    'filter' => $payloadFilter,
+                ]);
                 continue;
             }
 
@@ -487,6 +512,12 @@ final class ExportAgent
             'selectors' => $entitySelectors === [] ? null : $entitySelectors,
             'versions' => $versionExports,
         ];
+
+        $this->context->debug('Entity export complete.', [
+            'project' => $projectSlug,
+            'entity' => $entitySlug,
+            'versions' => count($versionExports),
+        ]);
 
         return [
             'entity' => $entityData,
@@ -878,14 +909,55 @@ final class ExportAgent
             return null;
         }
 
-        if (!array_key_exists('equals', $definition)) {
-            return null;
+        $filter = ['path' => $path];
+
+        if (array_key_exists('equals', $definition)) {
+            $filter['mode'] = 'equals';
+            $filter['value'] = $definition['equals'];
+
+            return $filter;
         }
 
-        return [
-            'path' => $path,
-            'equals' => $definition['equals'],
-        ];
+        if (array_key_exists('in', $definition) && is_array($definition['in'])) {
+            $filter['mode'] = 'in';
+            $filter['value'] = array_values($definition['in']);
+
+            return $filter;
+        }
+
+        if (array_key_exists('matches', $definition) && is_string($definition['matches'])) {
+            $pattern = trim($definition['matches']);
+            if ($pattern === '') {
+                return null;
+            }
+
+            if (@preg_match($pattern, '') === false) {
+                throw new InvalidArgumentException(sprintf('Invalid regular expression in payload filter: %s', $pattern));
+            }
+
+            $filter['mode'] = 'matches';
+            $filter['value'] = $pattern;
+
+            return $filter;
+        }
+
+        if (array_key_exists('regex', $definition) && is_string($definition['regex'])) {
+            $pattern = trim($definition['regex']);
+            if ($pattern === '') {
+                return null;
+            }
+
+            if (@preg_match($pattern, '') === false) {
+                throw new InvalidArgumentException(sprintf('Invalid regular expression in payload filter: %s', $pattern));
+            }
+
+            $filter['mode'] = 'matches';
+            $filter['value'] = $pattern;
+
+            return $filter;
+        }
+
+        return null;
     }
 
     private function prepareTransform($definition): array
@@ -967,8 +1039,31 @@ final class ExportAgent
         }
 
         $value = $this->getValueByPath($payload, $filter['path']);
+        $mode = $filter['mode'] ?? 'equals';
+        $expected = $filter['value'] ?? null;
 
-        return $value === $filter['equals'];
+        switch ($mode) {
+            case 'equals':
+                return $value === $expected;
+            case 'in':
+                if (!is_array($expected)) {
+                    return false;
+                }
+
+                return in_array($value, $expected, true);
+            case 'matches':
+                if (!is_string($expected) || $expected === '') {
+                    return false;
+                }
+
+                if (!is_scalar($value)) {
+                    return false;
+                }
+
+                return @preg_match($expected, (string) $value) === 1;
+            default:
+                return false;
+        }
     }
 
     private function getValueByPath(array $data, string $path)

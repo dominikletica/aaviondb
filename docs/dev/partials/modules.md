@@ -121,7 +121,7 @@ return [
 | `UiAgent` | system | Console / web UI integration |
 | `LogAgent` | system | Operational log access |
 | `EventsAgent` | system | Event bus inspection |
-| `SchedulerAgent` | system | (Future) scheduled job orchestration |
+| `SchedulerAgent` | system | Scheduled job orchestration |
 | `SecurityAgent` | system | Rate limiting & lockdown management |
 
 ### Module Responsibilities
@@ -153,10 +153,11 @@ return [
 - **`SchemaAgent` (`schema`)** – Fieldset management & validation
   - List schemas stored in the `fieldsets` project
   - Inspect specific schema revisions via `@version`/`#commit`
-  - Lint JSON Schema payloads using the shared validator
+  - Create, update, upsert, delete, and lint JSON Schema payloads using the shared validator
 - **`ExportAgent` (`export`)** – Data exports and snapshots
   - Provides `export <project[,project…]|*>` with optional entity/version selectors
   - Produces deterministic JSON bundles (`project.items[*]`) with payloads, hashes, and guidance for downstream tooling
+  - Preset filters support equality, set membership, and regular-expression matching on payload fields
   - TODO: presets/destinations and schema profiles (see module doc)
 - **`AuthAgent` (`auth`)** – API token lifecycle
   - Commands: auth grant/list/revoke/reset
@@ -172,12 +173,12 @@ return [
   - Link to REST/API for optional remote execution
 - **`LogAgent` (`log`)** – Operational log access
   - Commands: log view/rotate/cleanup
-  - Expose auth/log diagnostics
+  - Expose auth/log diagnostics and manage log archives
   - Future: log streaming
 - **`EventsAgent` (`events`)** – Event bus inspection
-  - List listeners & emitted events
-  - Subscribe modules for instrumentation
-  - Diagnostics for module telemetry and live feed endpoints
+  - List listeners registered on the EventBus
+  - Provide basic diagnostics for listener counts
+  - Future: emitted-event telemetry and live feed endpoints
 - **`SchedulerAgent` (`scheduler`)** – Scheduled job orchestration
   - Manage scheduler tasks (`scheduler add/edit/remove/list/log`)
   - Execute queued commands via `cron` (REST/CLI, optional `--keep` cleanup integration)
@@ -185,6 +186,7 @@ return [
 - **`SecurityAgent` (`security`)** – Rate limiting & lockdown management
   - Control security toggles, manual lockdowns, and purge cached counters/blocks
   - REST enforcement via `SecurityManager` (per-client/global/failure buckets + `Retry-After` headers)
+  - Surface cache telemetry (entries/bytes/tag distribution) for security rate limits
 
 > Implementation TODOs are tracked centrally in `.codex/NOTES.md`.
 

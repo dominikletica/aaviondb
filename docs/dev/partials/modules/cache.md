@@ -8,7 +8,7 @@
 - Provide manual purge hooks (entire cache, single keys, or tagged subsets).
 
 ## Commands
-- `cache status` – Show whether caching is enabled, the default TTL, cache directory, active entry count, and how many expired entries were removed during the check.
+- `cache status` – Show whether caching is enabled, the default TTL, cache directory, active entry count, cumulative size, tag distribution, and how many expired entries were removed during the check.
 - `cache enable` / `cache disable` – Persistently toggle caching (disable also flushes artefacts).
 - `cache ttl <seconds>` – Update the default TTL; values ≤ 0 are rejected.
 - `cache purge [key=...] [tag=a,b]` – Remove cached artefacts. Without parameters everything is flushed; `key` targets a specific entry; `tag` accepts a comma-separated list of tags.
@@ -30,13 +30,19 @@ php cli.php "cache status"
 {
   "status": "ok",
   "action": "cache",
-  "message": "Cache is enabled (ttl=300s, 4 entries, 0 expired removed).",
+  "message": "Cache is enabled (ttl=300s, 4 entries, 1.23 KiB, 0 expired removed).",
   "data": {
     "enabled": true,
     "ttl": 300,
     "directory": "user/cache",
     "entries": 4,
-    "expired_removed": 0
+    "bytes": 1260,
+    "expired_removed": 0,
+    "tags": {
+      "security": 2,
+      "security:client:abc": 1,
+      "export": 1
+    }
   }
 }
 ```
@@ -52,4 +58,4 @@ curl -H "Authorization: Bearer <token>" \
 - Non-positive TTL → `status=error`, message `TTL must be greater than zero.`
 - Unknown subcommand → `status=error`, message `Unknown cache subcommand "foo".`
 
-> Planned follow-ups: surface tag-level diagnostics and optional cache warmup helpers (see `.codex/NOTES.md`).
+> Planned follow-ups: optional cache warmup helpers (see `.codex/NOTES.md`).

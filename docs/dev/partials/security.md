@@ -25,7 +25,7 @@
 
 ## Upcoming Security Work
 - Add allow/deny lists and trusted client overrides for internal services.
-- Emit telemetry for rate limiting (counters, block counts) and surface via `security config`.
+- Extend telemetry (per-project scopes, aggregation windows) and surface via `security config`.
 - Enhance audit logging (who toggled enforcement, when lockdown was lifted).
 - Finalise module sandboxing policies (execution scopes, command-level permissions).
 - Document rotation policies for `auth grant/revoke/reset` and integrate with logging.

@@ -5,10 +5,10 @@
 ## Responsibilities
 - Bridge `SecurityManager` controls to CLI/REST (`security` command).
 - Allow operators to toggle enforcement, trigger manual lockdowns, and purge security artefacts.
-- Surface the current configuration (`security.*` config keys) and lockdown metadata.
+- Surface the current configuration (`security.*` config keys), lockdown metadata, and live cache telemetry.
 
 ## Commands
-- `security config` / `security status` – Display whether security is enabled, active configuration values, lockdown state, and reason.
+- `security config` / `security status` – Display whether security is enabled, active configuration values, lockdown state, reason, and cached counter telemetry (`entries`, `bytes`, `tags`).
 - `security enable` / `security disable` – Toggle the enforcement flag; disabling also purges cached counters/blocks.
 - `security lockdown [seconds]` – Manually trigger a lockdown (duration defaults to `security.ddos_lockdown`).
 - `security purge` – Remove cached counters, blocks, and lockdown artefacts (tagged `security:*`).
@@ -34,7 +34,16 @@ php cli.php "security lockdown 120"
   "data": {
     "lockdown": true,
     "retry_after": 120,
-    "locked_until": "2025-10-19T15:45:00+00:00"
+    "locked_until": "2025-10-19T15:45:00+00:00",
+    "telemetry": {
+      "entries": 12,
+      "bytes": 9216,
+      "expired": 0,
+      "tags": {
+        "security": 12,
+        "security:client:abcd123": 3
+      }
+    }
   }
 }
 ```
@@ -50,4 +59,4 @@ curl -H "Authorization: Bearer <token>" \
 - Non-positive duration → `status=error`, message `Lockdown duration must be greater than zero seconds.`
 - Unknown subcommand → `status=error`, message `Unknown security subcommand "foo".`
 
-> Upcoming work: whitelisting/allow-list management, telemetry output, and deeper audit logging (see `.codex/NOTES.md`).
+> Upcoming work: whitelisting/allow-list management and deeper audit logging (see `.codex/NOTES.md`).

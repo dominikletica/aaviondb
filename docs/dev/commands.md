@@ -50,6 +50,10 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `projects` – Alias to list projects (`list projects`).
     - `versions` – Alias to list versions (`list versions <project> <entity>`).
 - `log` – Tail framework logs (`log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]`).
+- `log`
+    - `view` (default) – Tail the framework log (`log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]`).
+    - `rotate` – Rotate the primary log file (`log rotate [keep=10]`).
+    - `cleanup` – Remove archived log files beyond a retention threshold (`log cleanup [keep=10]`).
 - `project`
     - `commits` – Show commit history (`project commits <slug> [entity] [limit=50]`).
     - `create` – Create project with metadata (`project create <slug> [title="..."] [description="..."]`).
@@ -71,6 +75,10 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `lint` – Validate JSON schema payloads (`schema lint {json}`).
     - `list` – List available fieldset schemas (`schema list [with_versions=1]`).
     - `show` – Show a schema revision (`schema show <fieldset[@version|#commit]>`).
+    - `create` – Create a new schema entity (`schema create <slug> {json schema}`).
+    - `update` – Update an existing schema entity (`schema update <slug> {json schema} [--merge=0|1]`).
+    - `save` – Upsert a schema (create if missing) (`schema save <slug> {json schema} [--merge=0|1]`).
+    - `delete` – Delete a schema or specific revision (`schema delete <slug> [@version|#commit]`).
 - `security`
     - `config` / `status` – Display security configuration and lockdown state (`security config`).
     - `enable` – Enable rate limiting enforcement (`security enable`).
@@ -80,6 +88,8 @@ Quick overview of the currently available CLI commands, including aliases, usage
 - `set` – Alias for `config set`.
 - `show` – Alias for entity show.
 - `status` – Alias for core status snapshot (`status`).
+- `events`
+    - `listeners` – Display registered event listeners and counts (`events listeners`).
 - `scheduler` commands rely on `cron`; ensure tasks reference full CLI statements.
 
 Refer to the individual module documentation in `docs/dev/partials/modules/*.md` for deep dives, examples, and error handling notes.

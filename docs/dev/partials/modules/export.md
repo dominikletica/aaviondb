@@ -208,7 +208,7 @@ All variants yield the JSON envelope described above.
 }
 ```
 
-- `selection.entities` accepts the same syntax as the CLI (slug, `@version`, `#commit`). `selection.payload.path` uses dot-notation relative to the version payload (e.g. `export`, `chapters.0.title`) and compares the value via `equals`.  
+- `selection.entities` accepts the same syntax as the CLI (slug, `@version`, `#commit`). `selection.payload.path` uses dot-notation relative to the version payload (e.g. `export`, `chapters.0.title`) and supports `equals`, `in` (array of accepted values), or `matches`/`regex` (regular expression).  
 - `transform.whitelist` keeps only the listed payload fields (dot-paths), while `transform.blacklist` removes fields. Whitelist is applied first, then blacklist.  
 - To extend the schema, adjust `ExportAgent::loadPreset()` and the related helpers (`preparePayloadFilter`, `prepareTransform`) – the Studio UI will adhere to the same structure.
 

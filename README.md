@@ -104,7 +104,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 ### Cache Management
 | Command | Description |
 |----------|-------------|
-| `cache status` | Show cache enablement, TTL, directory, and entry counts (removes expired artefacts). |
+| `cache status` | Show cache enablement, TTL, directory, entry counts, cumulative size, tag distribution, and remove expired artefacts. |
 | `cache enable` | Enable caching globally. |
 | `cache disable` | Disable caching and flush artefacts. |
 | `cache ttl <seconds>` | Update the default TTL. |
@@ -113,16 +113,34 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 ### Security & Rate Limiting
 | Command | Description |
 |----------|-------------|
-| `security config` / `security status` | Display security configuration and lockdown state. |
+| `security config` / `security status` | Display security configuration, lockdown state, and rate-limit cache telemetry. |
 | `security enable` | Enable rate limiting enforcement. |
 | `security disable` | Disable enforcement and purge cached counters/blocks. |
 | `security lockdown [seconds]` | Trigger a manual lockdown (defaults to configured duration). |
 | `security purge` | Remove cached security artefacts. |
 
+### Schema Management
+| Command | Description |
+|----------|-------------|
+| `schema list [with_versions=1]` | List fieldset schemas with optional version metadata. |
+| `schema show <slug[@version|#commit]>` | Show a schema revision (defaults to the active version). |
+| `schema lint {json}` | Validate a JSON Schema payload before persisting it. |
+| `schema create <slug> {json}` | Create a new schema entity. |
+| `schema update <slug> {json} [--merge=0|1]` | Update an existing schema (default is replace, `--merge=1` merges). |
+| `schema save <slug> {json} [--merge=0|1]` | Upsert helper that creates the schema when missing. |
+| `schema delete <slug> [@version|#commit]` | Delete a schema or a specific revision. |
+
 ### Logging
 | Command | Description |
 |----------|-------------|
 | `log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]` | Tail the framework log with optional level and limit filters. |
+| `log rotate [keep=10]` | Rotate the active log file and keep only the most recent archives. |
+| `log cleanup [keep=10]` | Delete archived log files beyond the retention threshold. |
+
+### Events
+| Command | Description |
+|----------|-------------|
+| `events listeners` | List registered event listeners with their counts. |
 
 Commands can be invoked universally across interfaces:
 
@@ -136,7 +154,9 @@ GET api.php?command
 
 PHP:
 ```php
-AavionDB::command('list projects')
+require __DIR__ . '/aaviondb.php';
+
+AavionDB::command('list projects');
 ```
 
 CLI:
@@ -156,9 +176,15 @@ php api.php setup
 ```
 or inside PHP:
 ```php
-include aaviondb/api.php;
-AavionDB::setup(); //lazily bootstraps; repeated calls are ignored within the same request
+require __DIR__ . '/aaviondb.php';
+
+// Optional: customise setup options before the first command.
+AavionDB::setup([
+    // 'active_brain' => 'default',
+]);
 ```
+
+`aaviondb.php` loads Composer's autoloader and ensures the framework is bootstrapped exactly once per request, so subsequent `AavionDB::run()` or `AavionDB::command()` calls are ready to use.
 
 More commands will be documented as development progresses.
 

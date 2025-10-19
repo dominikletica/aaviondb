@@ -42,6 +42,8 @@ final class AavionDB
         'projects' => ['*'],
     ];
 
+    private static bool $debug = false;
+
     /**
      * Bootstraps the framework. May only be invoked once per request lifecycle.
      *
@@ -76,6 +78,12 @@ final class AavionDB
             return self::errorResponse('invalid', 'Command action must not be empty.');
         }
 
+        $debug = self::extractDebugFlag($parameters);
+        $previousDebug = self::$debug;
+        if ($debug !== null) {
+            self::$debug = $debug;
+        }
+
         /** @var CommandRegistry $registry */
         $registry = self::$state->container()->get(CommandRegistry::class);
         
@@ -84,7 +92,10 @@ final class AavionDB
 
             return $response->toArray();
         } catch (CommandException $exception) {
-            self::logger()->warning($exception->getMessage(), ['action' => $action]);
+            self::logger()->warning($exception->getMessage(), [
+                'action' => $action,
+                'source' => 'core:facade',
+            ]);
 
             return self::errorResponse($action, $exception->getMessage());
         } catch (\Throwable $exception) {
@@ -92,6 +103,7 @@ final class AavionDB
                 'action' => $action,
                 'message' => $exception->getMessage(),
                 'exception' => $exception,
+                'source' => 'core:facade',
             ]);
 
             return self::errorResponse($action, 'Internal error during command execution.', [
@@ -100,6 +112,8 @@ final class AavionDB
                     'type' => \get_class($exception),
                 ],
             ]);
+        } finally {
+            self::$debug = $previousDebug;
         }
     }
 
@@ -120,7 +134,10 @@ final class AavionDB
 
             return self::run($parsed->action(), $parsed->parameters());
         } catch (CommandException $exception) {
-            self::logger()->warning($exception->getMessage(), ['statement' => $statement]);
+            self::logger()->warning($exception->getMessage(), [
+                'statement' => $statement,
+                'source' => 'core:facade',
+            ]);
 
             return self::errorResponse('parse', $exception->getMessage(), [
                 'statement' => $statement,
@@ -130,6 +147,7 @@ final class AavionDB
                 'statement' => $statement,
                 'message' => $exception->getMessage(),
                 'exception' => $exception,
+                'source' => 'core:facade',
             ]);
 
             return self::errorResponse('parse', 'Internal error while parsing command.', [
@@ -321,6 +339,83 @@ final class AavionDB
     {
         self::$state = null;
         self::$bootstrapOptions = [];
+        self::$debug = false;
+    }
+
+    public static function debugEnabled(): bool
+    {
+        return self::$debug;
+    }
+
+    public static function debugLog(string $message, array $context = []): void
+    {
+        if (!self::debugEnabled()) {
+            return;
+        }
+
+        if (!isset($context['source'])) {
+            $context['source'] = 'core:debug';
+        }
+
+        $context['debug'] = true;
+
+        self::logger()->debug($message, $context);
+    }
+
+    private static function extractDebugFlag(array &$parameters): ?bool
+    {
+        $debug = null;
+
+        if (\array_key_exists('debug', $parameters)) {
+            $candidate = self::normalizeBool($parameters['debug']);
+            if ($candidate !== null) {
+                $debug = $candidate;
+                $parameters['debug'] = $candidate;
+            } else {
+                unset($parameters['debug']);
+            }
+        }
+
+        if (isset($parameters['metadata']) && \is_array($parameters['metadata']) && \array_key_exists('debug', $parameters['metadata'])) {
+            $candidate = self::normalizeBool($parameters['metadata']['debug']);
+            if ($candidate !== null) {
+                $debug = $candidate;
+                $parameters['metadata']['debug'] = $candidate;
+            } else {
+                unset($parameters['metadata']['debug']);
+            }
+        }
+
+        return $debug;
+    }
+
+    private static function normalizeBool($value): ?bool
+    {
+        if (\is_bool($value)) {
+            return $value;
+        }
+
+        if (\is_numeric($value)) {
+            return ((int) $value) === 1;
+        }
+
+        if (\is_string($value)) {
+            $normalized = \strtolower(\trim($value));
+
+            if ($normalized === '') {
+                return null;
+            }
+
+            if (\in_array($normalized, ['1', 'true', 'yes', 'y', 'on'], true)) {
+                return true;
+            }
+
+            if (\in_array($normalized, ['0', 'false', 'no', 'n', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return null;
     }
 
     /**

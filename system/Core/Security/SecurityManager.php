@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AavionDB\Core\Security;
 
+use AavionDB\AavionDB;
 use AavionDB\Core\Cache\CacheManager;
 use AavionDB\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
@@ -187,6 +188,13 @@ final class SecurityManager
         $client = $this->normaliseClient($clientKey);
         $ctx = $this->augmentContext($context, $client);
 
+        AavionDB::debugLog('Registering security attempt.', [
+            'client' => $client['normalized'],
+            'action' => $ctx['action'] ?? null,
+            'mode' => $ctx['mode'] ?? null,
+            'source' => 'security:manager',
+        ]);
+
         $clientCounter = $this->incrementWindowCounter(
             $this->clientCounterKey($client['hash']),
             (int) $config['rate_limit'],
@@ -196,6 +204,13 @@ final class SecurityManager
 
         if ($clientCounter['exceeded']) {
             $block = $this->blockClient($client, 'rate_limit', (int) $config['block_duration'], $ctx);
+
+            AavionDB::debugLog('Rate limit exceeded.', [
+                'client' => $client['normalized'],
+                'retry_after' => $block['retry_after'],
+                'action' => $ctx['action'] ?? null,
+                'source' => 'security:manager',
+            ]);
 
             $this->logger->warning('Client rate limit exceeded.', [
                 'client' => $client['normalized'],
@@ -275,6 +290,13 @@ final class SecurityManager
         if ($failure['exceeded']) {
             $block = $this->blockClient($client, 'auth_failure', (int) $config['failed_block'], $ctx);
 
+            AavionDB::debugLog('Authentication failure limit exceeded.', [
+                'client' => $client['normalized'],
+                'retry_after' => $block['retry_after'],
+                'action' => $ctx['action'] ?? null,
+                'source' => 'security:manager',
+            ]);
+
             $this->logger->notice('Client blocked after repeated authentication failures.', [
                 'client' => $client['normalized'],
                 'retry_after' => $block['retry_after'],
@@ -313,6 +335,13 @@ final class SecurityManager
         if (($context['mode'] ?? null) === 'admin_secret') {
             $this->cache->forget($this->blockKey($client['hash']));
         }
+
+        AavionDB::debugLog('Security success registered.', [
+            'client' => $client['normalized'],
+            'action' => $context['action'] ?? null,
+            'mode' => $context['mode'] ?? null,
+            'source' => 'security:manager',
+        ]);
     }
 
     /**
@@ -357,11 +386,29 @@ final class SecurityManager
             $lockdownReason = is_string($lockdown['reason'] ?? null) ? $lockdown['reason'] : null;
         }
 
+        $telemetry = $this->telemetry();
+
         return [
             'config' => $config,
             'lockdown_active' => $lockdownActive,
             'lockdown_until' => $lockdownUntil,
             'lockdown_reason' => $lockdownReason,
+            'telemetry' => $telemetry,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function telemetry(): array
+    {
+        $stats = $this->cache->statisticsByTagPrefix('security');
+
+        return [
+            'entries' => $stats['entries'] ?? 0,
+            'bytes' => $stats['bytes'] ?? 0,
+            'expired' => $stats['expired'] ?? 0,
+            'tags' => $stats['tags'] ?? [],
         ];
     }
 
@@ -442,6 +489,12 @@ final class SecurityManager
             'action' => $context['action'] ?? null,
         ]);
 
+        AavionDB::debugLog('Security lockdown activated.', [
+            'reason' => $reason,
+            'locked_until' => $this->formatTimestamp($until),
+            'source' => 'security:manager',
+        ]);
+
         return [
             'retry_after' => max(1, $until - $now),
             'locked_until' => $this->formatTimestamp($until),
@@ -474,6 +527,13 @@ final class SecurityManager
             ['security', 'security:block', 'security:client:' . $client['hash']],
             true
         );
+
+        AavionDB::debugLog('Client blocked.', [
+            'client' => $client['normalized'],
+            'reason' => $reason,
+            'blocked_until' => $this->formatTimestamp($until),
+            'source' => 'security:manager',
+        ]);
 
         return [
             'retry_after' => max(1, $until - $now),

@@ -110,6 +110,10 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
         - `AavionDB\Core\Logging\LoggerFactory`
           - __construct(string $logDirectory, string $channel = 'aaviondb', ?Monolog\Level $level = null)
           - create(): Monolog\Logger
+      - **ModuleLogger**
+        - `AavionDB\Core\Logging\ModuleLogger`
+          - __construct(Psr\Log\LoggerInterface $logger, string $module)
+          - log($level, $message, array $context = []): void
     - **Modules**
       - **ModuleContext**
         - `AavionDB\Core\Modules\ModuleContext`
@@ -258,6 +262,11 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
     - **Log**
       - **LogAgent**
         - `AavionDB\Modules\Log\LogAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Events**
+      - **EventsAgent**
+        - `AavionDB\Modules\Events\EventsAgent`
           - __construct(AavionDB\Core\Modules\ModuleContext $context)
           - register(): void
     - **Project**

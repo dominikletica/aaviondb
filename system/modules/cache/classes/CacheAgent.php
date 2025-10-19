@@ -147,14 +147,31 @@ final class CacheAgent
     private function statusCommand(): CommandResponse
     {
         $expired = $this->cache->cleanupExpired();
+        $stats = $this->cache->statistics();
         $enabled = $this->cache->isEnabled();
         $ttl = $this->cache->ttl();
         $directory = $this->cache->directory();
-        $entries = $this->countEntries();
+        $entries = $stats['entries'] ?? 0;
+        $bytes = $stats['bytes'] ?? 0;
+        $tags = $stats['tags'] ?? [];
 
         $message = $enabled
-            ? sprintf('Cache is enabled (ttl=%ds, %d entries, %d expired removed).', $ttl, $entries, $expired)
-            : sprintf('Cache is disabled (%d expired entries removed).', $expired);
+            ? sprintf(
+                'Cache is enabled (ttl=%ds, %d entries, %.2f KiB, %d expired removed).',
+                $ttl,
+                $entries,
+                $bytes / 1024,
+                $expired
+            )
+            : sprintf('Cache is disabled (%d expired entries found).', $expired);
+
+        $this->context->debug('Cache status snapshot.', [
+            'enabled' => $enabled,
+            'ttl' => $ttl,
+            'entries' => $entries,
+            'bytes' => $bytes,
+            'expired_removed' => $expired,
+        ]);
 
         return CommandResponse::success('cache', [
             'enabled' => $enabled,
@@ -162,6 +179,8 @@ final class CacheAgent
             'directory' => $directory,
             'entries' => $entries,
             'expired_removed' => $expired,
+            'bytes' => $bytes,
+            'tags' => $tags,
         ], $message);
     }
 
@@ -225,6 +244,12 @@ final class CacheAgent
             ? sprintf('Flushed %d cache entries.', $removed)
             : sprintf('Flushed %d cache entries matching tags [%s].', $removed, implode(', ', $tags));
 
+        $this->context->debug('Cache purge executed.', [
+            'key' => $key,
+            'tags' => $tags,
+            'removed' => $removed,
+        ]);
+
         return CommandResponse::success('cache', [
             'purged' => $removed,
             'tags' => $tags,
@@ -255,12 +280,4 @@ final class CacheAgent
         }, $parts), static fn (string $tag): bool => $tag !== ''));
     }
 
-    private function countEntries(): int
-    {
-        $directory = $this->cache->directory();
-        $pattern = rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '*.cache.json';
-        $files = glob($pattern);
-
-        return $files === false ? 0 : count($files);
-    }
 }

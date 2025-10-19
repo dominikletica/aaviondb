@@ -87,7 +87,7 @@
 > These items are not yet implemented but serve as design reminders for Codex and contributors.
 
 - **Decouple UI Interface** → Migrate the integrated management UI into a standalone project: **AavionStudio**, a Vite-powered web application using TailwindCSS, PostCSS, Alpine.js, and Tabler Icons.  
-- **SchemaAgent Enhancements** → Extend the new `SchemaAgent` with create/update commands, cached lint results, and Studio authoring workflows. 
+- **SchemaAgent Enhancements** → Add cached lint result caching and Studio authoring workflows for fieldsets. 
 - **Schema Versioning & Compatibility Layer** → Add support for versioned schemas (e.g., `schema@19`) with backward compatibility validation between revisions.  
 - **Consistent Version Handling** → Standardise all commands on the `@version` selector (replace legacy documentation accordingly).  
 - **Extended Diagnostic Dashboard** → Enhance the built-in diagnostics with dependency visualization, memory footprint tracking, and event throughput statistics.  

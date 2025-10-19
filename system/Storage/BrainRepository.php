@@ -517,6 +517,13 @@ final class BrainRepository
         $slugEntity = $this->normalizeKey($entitySlug);
         $brain = $this->loadActiveBrain();
 
+        AavionDB::debugLog('Deleting entity.', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'purge_commits' => $purgeCommits,
+            'source' => 'storage:brain',
+        ]);
+
         if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
             throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
         }
@@ -546,6 +553,13 @@ final class BrainRepository
             'project' => $slugProject,
             'entity' => $slugEntity,
             'purged_commits' => $purgeCommits,
+        ]);
+
+        AavionDB::debugLog('Entity deleted.', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'remaining_entities' => \count($brain['projects'][$slugProject]['entities'] ?? []),
+            'source' => 'storage:brain',
         ]);
     }
 
@@ -631,6 +645,13 @@ final class BrainRepository
 
         $brain = $this->loadActiveBrain();
 
+        AavionDB::debugLog('Deleting entity version.', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'reference' => $reference,
+            'source' => 'storage:brain',
+        ]);
+
         if (!isset($brain['projects'][$slugProject]['entities'][$slugEntity])) {
             throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
         }
@@ -706,6 +727,14 @@ final class BrainRepository
             'reference' => $reference,
         ]);
 
+        AavionDB::debugLog('Entity version deleted.', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'removed_version' => $versionKey,
+            'remaining_versions' => \count($entity['versions'] ?? []),
+            'source' => 'storage:brain',
+        ]);
+
         return [
             'project' => $slugProject,
             'entity' => $slugEntity,
@@ -727,6 +756,15 @@ final class BrainRepository
             throw new StorageException(sprintf('Project "%s" not found in active brain.', $projectSlug));
         }
 
+        $normalizedEntity = $entitySlug !== null ? $this->normalizeKey($entitySlug) : null;
+
+        AavionDB::debugLog('Purging inactive versions.', [
+            'project' => $slugProject,
+            'entity' => $normalizedEntity,
+            'keep' => $keep,
+            'source' => 'storage:brain',
+        ]);
+
         $entities = &$brain['projects'][$slugProject]['entities'];
 
         if (!is_array($entities)) {
@@ -736,7 +774,7 @@ final class BrainRepository
         $targets = [];
 
         if ($entitySlug !== null) {
-            $slugEntity = $this->normalizeKey($entitySlug);
+            $slugEntity = $normalizedEntity;
             if (!isset($entities[$slugEntity]) || !is_array($entities[$slugEntity])) {
                 throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
             }
@@ -825,15 +863,23 @@ final class BrainRepository
 
             $this->events->emit('brain.entity.cleanup', [
                 'project' => $slugProject,
-                'entity' => $entitySlug !== null ? $this->normalizeKey($entitySlug) : null,
+                'entity' => $normalizedEntity,
                 'removed_versions' => $removedTotal,
                 'keep' => $keep,
+            ]);
+
+            AavionDB::debugLog('Inactive versions purged.', [
+                'project' => $slugProject,
+                'entity' => $normalizedEntity,
+                'removed_versions' => $removedTotal,
+                'keep' => $keep,
+                'source' => 'storage:brain',
             ]);
         }
 
         return [
             'project' => $slugProject,
-            'entity' => $entitySlug !== null ? $this->normalizeKey($entitySlug) : null,
+            'entity' => $normalizedEntity,
             'removed_versions' => $removedTotal,
             'keep' => $keep,
             'details' => $details,
@@ -901,6 +947,13 @@ final class BrainRepository
         $slugEntity = $this->normalizeKey($entitySlug);
 
         $this->assertWriteAllowed($slugProject);
+
+        AavionDB::debugLog('Saving entity to brain.', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'options' => $options,
+            'source' => 'storage:brain',
+        ]);
 
         $brain = $this->loadActiveBrain();
         $timestamp = $this->timestamp();
@@ -1091,6 +1144,14 @@ final class BrainRepository
             'fieldset' => $entity['fieldset'] ?? null,
             'source_reference' => $sourceReference,
             'fieldset_reference' => $fieldsetReference,
+        ]);
+
+        AavionDB::debugLog('Entity saved.', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'version' => (string) $currentVersion,
+            'commit' => $commitHash,
+            'source' => 'storage:brain',
         ]);
 
         return [
@@ -1567,6 +1628,15 @@ final class BrainRepository
         $timestamp = (new DateTimeImmutable())->format('Ymd_His');
         $destination = $this->paths->userBackups() . DIRECTORY_SEPARATOR . \sprintf('%s%s-%s.brain', $slug, $labelPart, $timestamp);
 
+        AavionDB::debugLog('Creating brain backup.', [
+            'slug' => $slug,
+            'source' => $source,
+            'destination' => $destination,
+            'label' => $label,
+            'source_brain' => $isSystem ? 'system' : 'user',
+            'source' => 'storage:brain',
+        ]);
+
         if (!@\copy($source, $destination)) {
             throw new StorageException('Unable to create brain backup.');
         }
@@ -1578,6 +1648,13 @@ final class BrainRepository
             'path' => $destination,
             'bytes' => $bytes,
             'is_system' => $isSystem,
+        ]);
+
+        AavionDB::debugLog('Brain backup created.', [
+            'slug' => $slug,
+            'path' => $destination,
+            'bytes' => $bytes,
+            'source' => 'storage:brain',
         ]);
 
         return [
@@ -2120,6 +2197,12 @@ final class BrainRepository
             throw new StorageException(sprintf('Unable to create directory "%s".', $directory));
         }
 
+        AavionDB::debugLog('Writing brain file.', [
+            'path' => $path,
+            'attempt' => $attempt + 1,
+            'source' => 'storage:brain',
+        ]);
+
         $json = CanonicalJson::encode($data);
         $expectedHash = \hash('sha256', $json);
         $tmpPath = $this->writeAtomicTemporary($directory, \basename($path), $json);
@@ -2130,6 +2213,12 @@ final class BrainRepository
 
         if (!@\rename($tmpPath, $path)) {
             @\unlink($tmpPath);
+            AavionDB::debugLog('Renaming brain file failed.', [
+                'path' => $path,
+                'tmp' => $tmpPath,
+                'attempt' => $attempt + 1,
+                'source' => 'storage:brain',
+            ]);
             throw new StorageException(sprintf('Unable to replace brain file "%s".', $path));
         }
 
@@ -2157,6 +2246,13 @@ final class BrainRepository
                 ));
             }
 
+            AavionDB::debugLog('Brain write verification failed, retrying.', [
+                'path' => $path,
+                'attempt' => $attempt + 1,
+                'context' => $verification['context'],
+                'source' => 'storage:brain',
+            ]);
+
             $this->writeBrain($path, $data, $attempt + 1);
         } else {
             $this->recordIntegritySuccess($path, $expectedHash, $attempt + 1);
@@ -2169,6 +2265,13 @@ final class BrainRepository
                 ],
                 $verification['context']
             ));
+
+            AavionDB::debugLog('Brain file written successfully.', [
+                'path' => $path,
+                'hash' => $expectedHash,
+                'attempts' => $attempt + 1,
+                'source' => 'storage:brain',
+            ]);
         }
     }
 

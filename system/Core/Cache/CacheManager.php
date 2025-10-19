@@ -14,6 +14,8 @@ use function array_map;
 use function array_unique;
 use function glob;
 use function hash;
+use function filesize;
+use function ksort;
 use function is_array;
 use function is_dir;
 use function is_int;
@@ -24,6 +26,7 @@ use function json_encode;
 use function preg_replace;
 use function strtolower;
 use function time;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -318,6 +321,138 @@ final class CacheManager
     public function directory(): string
     {
         return $this->directory;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function statistics(): array
+    {
+        $this->ensureDirectory();
+        $files = $this->allFiles();
+        $totalBytes = 0;
+        $tags = [];
+        $expired = 0;
+        $now = time();
+
+        foreach ($files as $file) {
+            $size = @filesize($file);
+            if ($size !== false) {
+                $totalBytes += (int) $size;
+            }
+
+            $entry = $this->decodeFile($file);
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $entryTags = $entry['tags'] ?? [];
+            if (is_array($entryTags)) {
+                foreach ($entryTags as $tag) {
+                    if (!is_string($tag) || $tag === '') {
+                        continue;
+                    }
+                    $tag = strtolower($tag);
+                    $tags[$tag] = ($tags[$tag] ?? 0) + 1;
+                }
+            }
+
+            if (isset($entry['expires_at']) && is_int($entry['expires_at']) && $entry['expires_at'] <= $now) {
+                $expired++;
+            }
+        }
+
+        ksort($tags);
+
+        return [
+            'entries' => count($files),
+            'bytes' => $totalBytes,
+            'tags' => $tags,
+            'expired' => $expired,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function statisticsByTagPrefix(string $prefix): array
+    {
+        $this->ensureDirectory();
+        $files = $this->allFiles();
+        $totalBytes = 0;
+        $tags = [];
+        $expired = 0;
+        $now = time();
+        $entries = 0;
+        $prefix = strtolower(trim($prefix));
+
+        if ($prefix === '') {
+            return [
+                'entries' => 0,
+                'bytes' => 0,
+                'tags' => [],
+                'expired' => 0,
+            ];
+        }
+
+        foreach ($files as $file) {
+            $entry = $this->decodeFile($file);
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $entryTags = $entry['tags'] ?? [];
+            if (!is_array($entryTags)) {
+                continue;
+            }
+
+            $matches = false;
+            $normalizedTags = [];
+            foreach ($entryTags as $tag) {
+                if (!is_string($tag) || $tag === '') {
+                    continue;
+                }
+
+                $normalized = strtolower($tag);
+                $normalizedTags[] = $normalized;
+
+                if (str_starts_with($normalized, $prefix)) {
+                    $matches = true;
+                }
+            }
+
+            if (!$matches) {
+                continue;
+            }
+
+            $entries++;
+
+            $size = @filesize($file);
+            if ($size !== false) {
+                $totalBytes += (int) $size;
+            }
+
+            foreach ($normalizedTags as $normalized) {
+                if (!str_starts_with($normalized, $prefix)) {
+                    continue;
+                }
+
+                $tags[$normalized] = ($tags[$normalized] ?? 0) + 1;
+            }
+
+            if (isset($entry['expires_at']) && is_int($entry['expires_at']) && $entry['expires_at'] <= $now) {
+                $expired++;
+            }
+        }
+
+        ksort($tags);
+
+        return [
+            'entries' => $entries,
+            'bytes' => $totalBytes,
+            'tags' => $tags,
+            'expired' => $expired,
+        ];
     }
 
     /**

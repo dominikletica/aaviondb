@@ -28,7 +28,10 @@ try {
     $security = AavionDB::security();
 } catch (\Throwable $exception) {
     if ($logger !== null) {
-        $logger->error('Bootstrap failed', ['exception' => $exception]);
+        $logger->error('Bootstrap failed', [
+            'exception' => $exception,
+            'source' => 'rest:api',
+        ]);
     }
 
     $response = new JsonResponse([
@@ -47,34 +50,104 @@ try {
     return;
 }
 
-$action = (string) $request->query->get('action', '');
-if ($action === '') {
-    $payload = [
-        'status' => 'error',
-        'action' => 'invalid',
-        'message' => 'Query parameter "action" is required.',
-        'meta' => [],
-    ];
+$parameters = $request->query->all();
 
-    $response = new JsonResponse($payload, JsonResponse::HTTP_BAD_REQUEST);
-    $response->send();
-
-    return;
+$action = '';
+if (isset($parameters['action'])) {
+    $action = (string) $parameters['action'];
+    unset($parameters['action']);
 }
 
-$parameters = $request->query->all();
-unset($parameters['action']);
+$commandStatement = '';
+if (isset($parameters['command']) && \is_string($parameters['command'])) {
+    $commandStatement = \trim((string) $parameters['command']);
+    unset($parameters['command']);
+}
+
+$normalizeBoolean = static function ($value): ?bool {
+    if (\is_bool($value)) {
+        return $value;
+    }
+
+    if (\is_numeric($value)) {
+        return ((int) $value) === 1;
+    }
+
+    if (\is_string($value)) {
+        $normalized = \strtolower(\trim($value));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (\in_array($normalized, ['1', 'true', 'yes', 'y', 'on'], true)) {
+            return true;
+        }
+
+        if (\in_array($normalized, ['0', 'false', 'no', 'n', 'off'], true)) {
+            return false;
+        }
+    }
+
+    return null;
+};
+
+$debugFlag = null;
+if (\array_key_exists('debug', $parameters)) {
+    $candidate = $normalizeBoolean($parameters['debug']);
+    if ($candidate !== null) {
+        $debugFlag = $candidate;
+        $parameters['debug'] = $candidate;
+    } else {
+        unset($parameters['debug']);
+    }
+}
 
 // Include JSON payload if provided.
 $rawBody = (string) $request->getContent();
 if ($rawBody !== '') {
     try {
         $decoded = \json_decode($rawBody, true, 512, JSON_THROW_ON_ERROR);
-        $parameters['payload'] = $decoded;
+
+        if (\is_array($decoded)) {
+            if (isset($decoded['command']) && \is_string($decoded['command']) && $commandStatement === '') {
+                $commandStatement = \trim((string) $decoded['command']);
+            }
+
+            if (\array_key_exists('debug', $decoded) && $debugFlag === null) {
+                $candidate = $normalizeBoolean($decoded['debug']);
+                if ($candidate !== null) {
+                    $debugFlag = $candidate;
+                    $parameters['debug'] = $candidate;
+                }
+            }
+
+            unset($decoded['command'], $decoded['debug']);
+
+            if ($decoded !== []) {
+                $payloadData = $decoded;
+
+                if (\array_key_exists('payload', $payloadData)) {
+                    $parameters['payload'] = $payloadData['payload'];
+                    unset($payloadData['payload']);
+                } elseif ($payloadData !== []) {
+                    $parameters['payload'] = $payloadData;
+                    $payloadData = [];
+                }
+
+                foreach ($payloadData as $key => $value) {
+                    if (!\array_key_exists($key, $parameters)) {
+                        $parameters[$key] = $value;
+                    }
+                }
+            }
+        } else {
+            $parameters['payload'] = $decoded;
+        }
     } catch (\JsonException $exception) {
         $response = new JsonResponse([
             'status' => 'error',
-            'action' => $action,
+            'action' => $action !== '' ? $action : 'command',
             'message' => 'Invalid JSON payload.',
             'meta' => [
                 'exception' => [
@@ -89,7 +162,43 @@ if ($rawBody !== '') {
         return;
     }
 } elseif ($request->request->count() > 0) {
-    $parameters['payload'] = $request->request->all();
+    $formPayload = $request->request->all();
+
+    if (isset($formPayload['command']) && \is_string($formPayload['command']) && $commandStatement === '') {
+        $commandStatement = \trim((string) $formPayload['command']);
+    }
+
+    if (\array_key_exists('debug', $formPayload) && $debugFlag === null) {
+        $candidate = $normalizeBoolean($formPayload['debug']);
+        if ($candidate !== null) {
+            $debugFlag = $candidate;
+            $parameters['debug'] = $candidate;
+        }
+    }
+
+    unset($formPayload['command'], $formPayload['debug']);
+
+    if ($formPayload !== []) {
+        $parameters['payload'] = $formPayload;
+    }
+}
+
+if ($action === '' && $commandStatement !== '') {
+    $action = 'command';
+}
+
+if ($action === '') {
+    $payload = [
+        'status' => 'error',
+        'action' => 'invalid',
+        'message' => 'Either query parameter "action" or "command" is required.',
+        'meta' => [],
+    ];
+
+    $response = new JsonResponse($payload, JsonResponse::HTTP_BAD_REQUEST);
+    $response->send();
+
+    return;
 }
 
 $apiToken = null;
@@ -140,6 +249,9 @@ $securityContext = [
     'action' => $action,
     'ip' => $clientKey,
     'unauthenticated' => $unauthenticatedCron,
+    'debug' => $debugFlag ?? false,
+    'command' => $commandStatement !== '' ? $commandStatement : null,
+    'source' => 'rest:api',
 ];
 
 if ($tokenPreview !== null) {
@@ -186,6 +298,9 @@ if (!$unauthenticatedCron) {
         $failure = $security->registerFailure($clientKey, [
             'action' => $action,
             'reason' => $guard['payload']['meta']['reason'] ?? null,
+            'command' => $commandStatement !== '' ? $commandStatement : null,
+            'debug' => $debugFlag ?? false,
+            'source' => 'rest:api',
         ]);
 
         $response = new JsonResponse($guard['payload'] ?? [], $guard['status_code'] ?? JsonResponse::HTTP_UNAUTHORIZED);
@@ -203,9 +318,32 @@ if (!$unauthenticatedCron) {
 }
 
 $scope = $guard['scope'] ?? null;
-$dispatcher = static function () use ($action, $parameters): array {
+$dispatcher = static function () use ($action, $parameters, $commandStatement, $debugFlag): array {
+    if ($commandStatement !== '') {
+        $statement = $commandStatement;
+        if ($debugFlag === true && !\str_contains($statement, '--debug')) {
+            $statement .= ' --debug';
+        }
+        if (isset($parameters['payload']) && \is_array($parameters['payload']) && !\str_contains($statement, '{')) {
+            $encodedPayload = \json_encode($parameters['payload'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($encodedPayload !== false) {
+                $statement .= ' ' . $encodedPayload;
+            }
+        }
+
+        return AavionDB::command($statement);
+    }
+
     return AavionDB::run($action, $parameters);
 };
+
+AavionDB::debugLog('Dispatching REST command.', [
+    'action' => $action,
+    'command' => $commandStatement !== '' ? $commandStatement : null,
+    'scope' => $scope,
+    'parameters' => $parameters,
+    'source' => 'rest:api',
+]);
 
 try {
     $result = \is_array($scope)
@@ -216,6 +354,8 @@ try {
         $logger->error('Unhandled exception during REST dispatch', [
             'action' => $action,
             'exception' => $exception,
+            'command' => $commandStatement !== '' ? $commandStatement : null,
+            'source' => 'rest:api',
         ]);
     }
 
@@ -233,6 +373,13 @@ try {
     ];
 }
 
+AavionDB::debugLog('REST command completed.', [
+    'action' => $action,
+    'command' => $commandStatement !== '' ? $commandStatement : null,
+    'status' => $result['status'] ?? null,
+    'source' => 'rest:api',
+]);
+
 if (($guard['allowed'] ?? true) === true) {
     $security->registerSuccess($clientKey, [
         'action' => $action,
@@ -240,6 +387,9 @@ if (($guard['allowed'] ?? true) === true) {
             ? 'cron'
             : ($guard['payload']['meta']['mode'] ?? null),
         'token_preview' => $tokenPreview,
+        'command' => $commandStatement !== '' ? $commandStatement : null,
+        'debug' => $debugFlag ?? false,
+        'source' => 'rest:api',
     ]);
 }
 
