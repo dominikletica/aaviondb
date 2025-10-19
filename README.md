@@ -42,7 +42,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 ### Export Commands
 | Command | Description |
 |----------|-------------|
-| `export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="How to use this export"]` | Generates JSON exports (full payloads) for one or more projects (comma-separated) or all projects with `*`, optionally narrowing the slice and providing per-export guidance. |
+| `export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="How to use this export"] [usage="LLM guidance"]` | Generates JSON exports (full payloads) for one or more projects (comma-separated) or all projects with `*`, optionally narrowing the slice and providing per-export guidance. Presets can be referenced via `export myproject:mypreset`. |
 
 ---
 

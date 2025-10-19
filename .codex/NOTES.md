@@ -126,4 +126,4 @@
 - Implemented ApiAgent module with `api serve/stop/status/reset`, including readiness checks, telemetry output, and token reset convenience command; docs and README aligned with the new workflow. Next focus: API scheduling hooks and test coverage for Auth/Api agents.
 - Added ExportAgent baseline: parser + command wire up exports for single/all projects, entity/commit selectors, and payload aggregation; documentation and README updated with usage and response structure.
 - Extended ProjectAgent to store project descriptions and expose `project update`; ExportAgent now accepts per-export descriptions, emits guide/policy blocks, and only includes the requested (or active) entity versions in each slice.
-- ExportAgent payload shape unified (`project.items[*]`) with multi-project CSV support and deterministic counts/hashes for cache-aware LLM ingest.
+- ExportAgent payload shape unified (`project.items[*]`) with multi-project CSV support, preset-driven selectors/transformers, CLI usage hints, and deterministic counts/hashes for cache-aware LLM ingest.

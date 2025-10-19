@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace AavionDB\Modules\Export;
 
 use AavionDB\Core\CommandResponse;
+use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Hashing\CanonicalJson;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
 use AavionDB\Storage\BrainRepository;
 use DateTimeImmutable;
 use InvalidArgumentException;
+use JsonException;
 use Psr\Log\LoggerInterface;
 use Throwable;
 use function array_filter;
@@ -18,6 +20,12 @@ use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_shift;
+use function array_key_exists;
+use function file_get_contents;
+use function is_dir;
+use function is_file;
+use function json_decode;
+use function mkdir;
 use function array_unique;
 use function array_values;
 use function count;
@@ -48,11 +56,19 @@ final class ExportAgent
 
     private LoggerInterface $logger;
 
+    private PathLocator $paths;
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private array $presetCache = [];
+
     public function __construct(ModuleContext $context)
     {
         $this->context = $context;
         $this->brains = $context->brains();
         $this->logger = $context->logger();
+        $this->paths = $context->paths();
     }
 
     public function register(): void
@@ -124,21 +140,48 @@ final class ExportAgent
             $exportDescription = $this->normaliseDescription($parameters['description'] ?? null) ?? self::DEFAULT_EXPORT_DESCRIPTION;
             $guideUsage = $this->normaliseDescription($parameters['usage'] ?? null) ?? $exportDescription;
 
-            if (\in_array('*', $projects, true)) {
-                if (\count($projects) > 1) {
-                    return CommandResponse::error('export', 'Wildcard export ("*") cannot be combined with explicit project slugs.');
+            $presetTargets = array_filter($projects, static fn (array $target) => $target['preset'] !== null);
+            $payloadFilter = null;
+            $transform = ['whitelist' => [], 'blacklist' => []];
+
+            if ($presetTargets !== []) {
+                if (\count($presetTargets) > 1 || \count($projects) > 1) {
+                    return CommandResponse::error('export', 'Presets can only be used when exporting a single project.');
+                }
+
+                $presetName = $presetTargets[0]['preset'];
+                if ($presetName === null) {
+                    return CommandResponse::error('export', 'Invalid preset reference.');
+                }
+
+                if ($selectors !== []) {
+                    return CommandResponse::error('export', 'Entity selectors cannot be combined with preset-based exports.');
+                }
+
+                $presetConfig = $this->loadPreset($presetName);
+                $selectors = $this->selectorsFromPreset($presetConfig);
+                $selectorStrings = array_map(static fn (array $selector): string => $selector['original'], $selectors);
+                $payloadFilter = $this->preparePayloadFilter($presetConfig['selection']['payload'] ?? null);
+                $transform = $this->prepareTransform($presetConfig['transform'] ?? []);
+                $exportDescription = $this->normaliseDescription($parameters['description'] ?? ($presetConfig['description'] ?? null)) ?? self::DEFAULT_EXPORT_DESCRIPTION;
+                $guideUsage = $this->normaliseDescription($parameters['usage'] ?? ($presetConfig['usage'] ?? null)) ?? $exportDescription;
+            }
+
+            if (\count($projects) === 1 && $projects[0]['slug'] === '*') {
+                if ($presetTargets !== []) {
+                    return CommandResponse::error('export', 'Wildcard exports do not support presets.');
                 }
                 if ($selectors !== []) {
                     return CommandResponse::error('export', 'Entity selectors are not supported when exporting all projects.');
                 }
 
-                $projects = $this->brains->listProjects();
+                $availableProjects = $this->brains->listProjects();
                 $projectExports = [];
                 $totalEntities = 0;
                 $totalVersions = 0;
 
-                foreach (array_keys($projects) as $slug) {
-                    $export = $this->buildProjectExport($slug, []);
+                foreach (array_keys($availableProjects) as $slug) {
+                    $export = $this->buildProjectExport($slug, [], null, []);
                     $projectExports[] = $export['project'];
                     $totalEntities += $export['entity_count'];
                     $totalVersions += $export['version_count'];
@@ -157,8 +200,7 @@ final class ExportAgent
                     $exportDescription,
                     $this->buildActionString('*', []),
                     [],
-                    $guideUsage,
-                    false
+                    $guideUsage
                 );
 
                 $message = $projectExports === []
@@ -176,8 +218,12 @@ final class ExportAgent
             $totalEntities = 0;
             $totalVersions = 0;
 
-            foreach ($projects as $projectSlug) {
-                $export = $this->buildProjectExport($projectSlug, $selectors);
+            foreach ($projects as $target) {
+                if ($target['slug'] === '*') {
+                    return CommandResponse::error('export', 'Wildcard export must be the only target.');
+                }
+
+                $export = $this->buildProjectExport($target['slug'], $selectors, $payloadFilter, $transform);
                 $projectExports[] = $export['project'];
                 $totalEntities += $export['entity_count'];
                 $totalVersions += $export['version_count'];
@@ -198,12 +244,11 @@ final class ExportAgent
                 $exportDescription,
                 $this->buildActionString($this->formatProjectArgument($projects), $selectorStrings),
                 $selectorStrings,
-                $guideUsage,
-                $isSlice
+                $guideUsage
             );
 
             $message = \count($projects) === 1
-                ? sprintf('Export generated for project "%s".', $projectExports[0]['slug'] ?? $projects[0])
+                ? sprintf('Export generated for project "%s".', $projectExports[0]['slug'] ?? $projects[0]['slug'])
                 : sprintf('Export generated for %d project(s).', \count($projectExports));
 
             return CommandResponse::success('export', $payload, $message);
@@ -230,7 +275,7 @@ final class ExportAgent
      *
      * @return array{project: array<string, mixed>, entity_count: int, version_count: int}
      */
-    private function buildProjectExport(string $projectSlug, array $targets): array
+    private function buildProjectExport(string $projectSlug, array $targets, ?array $payloadFilter, array $transform): array
     {
         $projectSummary = $this->brains->projectReport($projectSlug, false);
         $entities = $this->brains->listEntities($projectSlug);
@@ -260,7 +305,12 @@ final class ExportAgent
 
         foreach ($entitySlugs as $entitySlug) {
             $selections = $targetMap[$entitySlug] ?? [];
-            $export = $this->buildEntityExport($projectSlug, $entitySlug, $selections);
+            $export = $this->buildEntityExport($projectSlug, $entitySlug, $selections, $payloadFilter, $transform);
+
+            if ($export['version_count'] === 0) {
+                continue;
+            }
+
             $entityExports[] = $export['entity'];
             $versionCount += $export['version_count'];
         }
@@ -288,7 +338,7 @@ final class ExportAgent
     /**
      * @return array{entity: array<string, mixed>, version_count: int}
      */
-    private function buildEntityExport(string $projectSlug, string $entitySlug, array $targets = []): array
+    private function buildEntityExport(string $projectSlug, string $entitySlug, array $targets = [], ?array $payloadFilter = null, array $transform = []): array
     {
         $summary = $this->brains->entityReport($projectSlug, $entitySlug, true);
         $versions = isset($summary['versions']) && is_array($summary['versions'])
@@ -315,6 +365,9 @@ final class ExportAgent
         }
 
         $selected = [];
+
+        $explicitSelections = $targets !== [];
+        $applyPayloadFilter = !$explicitSelections && $payloadFilter !== null;
 
         if ($targets === []) {
             $activeVersion = (string) ($summary['active_version'] ?? '');
@@ -397,13 +450,23 @@ final class ExportAgent
             $record = $this->brains->getEntityVersion($projectSlug, $entitySlug, $reference);
             $selectors = $entry['selectors'] ?? [];
 
+            $payload = $record['payload'] ?? null;
+
+            if ($applyPayloadFilter && !$this->payloadMatchesFilter($payload, $payloadFilter)) {
+                continue;
+            }
+
+            if (is_array($payload)) {
+                $payload = $this->applyTransform($payload, $transform);
+            }
+
             $versionExports[] = [
                 'version' => (string) ($meta['version'] ?? ''),
                 'status' => $meta['status'] ?? 'inactive',
                 'hash' => $meta['hash'] ?? null,
                 'commit' => $meta['commit'] ?? null,
                 'committed_at' => $meta['committed_at'] ?? null,
-                'payload' => $record['payload'] ?? null,
+                'payload' => $payload,
                 'meta' => isset($record['meta']) && is_array($record['meta']) ? $record['meta'] : [],
                 'selectors' => $selectors === [] ? null : array_values(array_unique($selectors)),
             ];
@@ -475,7 +538,7 @@ final class ExportAgent
         }
 
         if ($value === '*') {
-            return ['*'];
+            return [['slug' => '*', 'preset' => null]];
         }
 
         $segments = preg_split('/\s*,\s*/', $value) ?: [];
@@ -487,10 +550,25 @@ final class ExportAgent
                 continue;
             }
 
-            $normalized[] = strtolower($segment);
+            $preset = null;
+            if (str_contains($segment, ':')) {
+                [$projectPart, $presetPart] = array_map('trim', explode(':', $segment, 2));
+                $segment = $projectPart;
+                $preset = $presetPart !== '' ? $presetPart : null;
+            }
+
+            $slug = $this->normalizeProjectSlug($segment);
+            if ($slug === '') {
+                continue;
+            }
+
+            $normalized[] = [
+                'slug' => $slug,
+                'preset' => $preset,
+            ];
         }
 
-        return array_values(array_unique($normalized));
+        return $this->uniqueProjectTargets($normalized);
     }
 
     /**
@@ -654,11 +732,20 @@ final class ExportAgent
      */
     private function formatProjectArgument(array $projects): string
     {
-        if ($projects === ['*']) {
+        if (\count($projects) === 1 && $projects[0]['slug'] === '*') {
             return '*';
         }
 
-        return implode(',', $projects);
+        $segments = [];
+        foreach ($projects as $target) {
+            $segment = $target['slug'];
+            if ($target['preset'] !== null) {
+                $segment .= ':' . $target['preset'];
+            }
+            $segments[] = $segment;
+        }
+
+        return implode(',', $segments);
     }
 
     /**
@@ -683,7 +770,7 @@ final class ExportAgent
             'project.items[*].entities[*].versions[*]',
         ];
 
-        if ($scope === 'project') {
+        if ($scope === 'project' || $scope === 'project_slice') {
             $navigation[] = 'project.items[0] (single-project slice)';
         }
 
@@ -702,6 +789,260 @@ final class ExportAgent
             'policies' => $policies,
             'notes' => $notes,
         ];
+    }
+
+    private function presetDirectory(): string
+    {
+        $directory = $this->paths->user() . DIRECTORY_SEPARATOR . 'presets' . DIRECTORY_SEPARATOR . 'export';
+
+        if (!is_dir($directory)) {
+            @mkdir($directory, 0775, true);
+        }
+
+        return $directory;
+    }
+
+    private function sanitizePresetName(string $name): string
+    {
+        $sanitized = trim($name);
+        $sanitized = preg_replace('/[^a-z0-9\-_.]/i', '_', $sanitized) ?? $sanitized;
+
+        return trim($sanitized, '_') ?: 'preset';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadPreset(string $name): array
+    {
+        $cacheKey = strtolower($name);
+        if (isset($this->presetCache[$cacheKey])) {
+            return $this->presetCache[$cacheKey];
+        }
+
+        $fileName = $this->sanitizePresetName($name) . '.json';
+        $path = $this->presetDirectory() . DIRECTORY_SEPARATOR . $fileName;
+
+        if (!is_file($path)) {
+            throw new InvalidArgumentException(sprintf('Preset "%s" not found (expected %s).', $name, $path));
+        }
+
+        try {
+            $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new InvalidArgumentException(sprintf('Preset "%s" contains invalid JSON: %s', $name, $exception->getMessage()));
+        }
+
+        if (!is_array($decoded)) {
+            throw new InvalidArgumentException(sprintf('Preset "%s" must decode to an object.', $name));
+        }
+
+        return $this->presetCache[$cacheKey] = $decoded;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectorsFromPreset(array $preset): array
+    {
+        $entities = $preset['selection']['entities'] ?? [];
+        if (!is_array($entities)) {
+            return [];
+        }
+
+        $selectors = [];
+        foreach ($entities as $raw) {
+            if (!is_string($raw)) {
+                continue;
+            }
+
+            $raw = trim($raw);
+            if ($raw === '') {
+                continue;
+            }
+
+            $selectors[] = $this->parseSelector($raw);
+        }
+
+        return $selectors;
+    }
+
+    private function preparePayloadFilter($definition): ?array
+    {
+        if (!is_array($definition)) {
+            return null;
+        }
+
+        $path = isset($definition['path']) ? trim((string) $definition['path']) : '';
+        if ($path === '') {
+            return null;
+        }
+
+        if (!array_key_exists('equals', $definition)) {
+            return null;
+        }
+
+        return [
+            'path' => $path,
+            'equals' => $definition['equals'],
+        ];
+    }
+
+    private function prepareTransform($definition): array
+    {
+        if (!is_array($definition)) {
+            return [
+                'whitelist' => [],
+                'blacklist' => [],
+            ];
+        }
+
+        $whitelist = [];
+        if (isset($definition['whitelist']) && is_array($definition['whitelist'])) {
+            foreach ($definition['whitelist'] as $path) {
+                if (!is_string($path)) {
+                    continue;
+                }
+                $path = trim($path);
+                if ($path !== '') {
+                    $whitelist[] = $path;
+                }
+            }
+        }
+
+        $blacklist = [];
+        if (isset($definition['blacklist']) && is_array($definition['blacklist'])) {
+            foreach ($definition['blacklist'] as $path) {
+                if (!is_string($path)) {
+                    continue;
+                }
+                $path = trim($path);
+                if ($path !== '') {
+                    $blacklist[] = $path;
+                }
+            }
+        }
+
+        return [
+            'whitelist' => $whitelist,
+            'blacklist' => $blacklist,
+        ];
+    }
+
+    private function applyTransform(array $payload, array $transform): array
+    {
+        $result = $payload;
+
+        $whitelist = $transform['whitelist'] ?? [];
+        $blacklist = $transform['blacklist'] ?? [];
+
+        if ($whitelist !== []) {
+            $filtered = [];
+            foreach ($whitelist as $path) {
+                $value = $this->getValueByPath($payload, $path);
+                if ($value !== null) {
+                    $this->setValueByPath($filtered, $path, $value);
+                }
+            }
+            $result = $filtered;
+        }
+
+        if ($blacklist !== []) {
+            foreach ($blacklist as $path) {
+                $this->removeValueByPath($result, $path);
+            }
+        }
+
+        return $result;
+    }
+
+    private function payloadMatchesFilter($payload, ?array $filter): bool
+    {
+        if ($filter === null) {
+            return true;
+        }
+
+        if (!is_array($payload)) {
+            return false;
+        }
+
+        $value = $this->getValueByPath($payload, $filter['path']);
+
+        return $value === $filter['equals'];
+    }
+
+    private function getValueByPath(array $data, string $path)
+    {
+        $segments = explode('.', $path);
+        $current = $data;
+
+        foreach ($segments as $segment) {
+            if (!is_array($current) || !array_key_exists($segment, $current)) {
+                return null;
+            }
+
+            $current = $current[$segment];
+        }
+
+        return $current;
+    }
+
+    private function setValueByPath(array &$data, string $path, $value): void
+    {
+        $segments = explode('.', $path);
+        $current =& $data;
+
+        foreach ($segments as $segment) {
+            if (!isset($current[$segment]) || !is_array($current[$segment])) {
+                $current[$segment] = [];
+            }
+
+            $current =& $current[$segment];
+        }
+
+        $current = $value;
+    }
+
+    private function removeValueByPath(array &$data, string $path): void
+    {
+        $segments = explode('.', $path);
+        $current =& $data;
+        $lastSegment = array_pop($segments);
+
+        foreach ($segments as $segment) {
+            if (!isset($current[$segment]) || !is_array($current[$segment])) {
+                return;
+            }
+
+            $current =& $current[$segment];
+        }
+
+        unset($current[$lastSegment]);
+    }
+
+    private function normalizeProjectSlug(string $slug): string
+    {
+        $slug = strtolower($slug);
+        $slug = preg_replace('/[^a-z0-9\-_.]/', '-', $slug) ?? $slug;
+        return trim($slug, '-_.');
+    }
+
+    private function uniqueProjectTargets(array $targets): array
+    {
+        $unique = [];
+        $result = [];
+
+        foreach ($targets as $target) {
+            $key = $target['slug'] . ':' . ($target['preset'] ?? '');
+            if (isset($unique[$key])) {
+                continue;
+            }
+
+            $unique[$key] = true;
+            $result[] = $target;
+        }
+
+        return $result;
     }
 
     private function hashExport(array $payload): string

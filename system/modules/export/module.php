@@ -12,7 +12,7 @@ return [
         'export' => [
             'description' => 'Generate JSON exports for a project or the entire brain.',
             'group' => 'export',
-            'usage' => 'export <project|*> [entity[,entity[@version|#commit]]] [description="How to use this export"]',
+            'usage' => 'export <project|*> [entity[,entity[@version|#commit]]] [description="How to use this export"] [usage="LLM guidance"]',
         ],
     ],
 ];

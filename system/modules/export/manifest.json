@@ -9,6 +9,7 @@
         "commands.register",
         "parser.extend",
         "storage.read",
+        "paths.read",
         "logger.use",
         "container.access"
     ]

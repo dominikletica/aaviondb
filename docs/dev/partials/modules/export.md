@@ -8,7 +8,7 @@
 - Respect access scopes enforced by `BrainRepository` and include payload metadata for downstream tooling.
 
 ## Command Behaviour
-- `export <slug[,slug…]> [entities] [description="How to use this slice"]` – Exports one or more projects (comma-separated). Without selectors the slice includes only the active version for each entity.  
+- `export <slug[,slug…]> [entities] [description="How to use this slice"] [usage="LLM guidance"]` – Exports one or more projects (comma-separated). Without selectors the slice includes only the active version for each entity; `usage` overrides the guide text (falls back to `description`).  
 - `export <slug> entity1,entity2@3,entity3#commit` – Restricts the export to the listed entities and revisions (`@version`, `#commit`). Multiple selectors per entity (for example `outline@12,outline@13,outline@14`) are supported, but only when exporting a single project.  
 - `export * [description="..."]` – Bundles every accessible project into a single response; selectors are not permitted in wildcard mode.  
 - Optional `description` parameters populate `export_meta.description`, while `usage` (when provided) overrides the guide’s usage text (otherwise it falls back to the description).
@@ -135,6 +135,7 @@
 ```
 
 - Multi-project (CSV) and wildcard (`*`) exports share the same structure: `project.items` contains one entry per project; `export_meta.scope` becomes `projects` (CSV) or `brain` (`*`).  
+- When selectors are applied via presets, `export_meta.scope` is set to `project_slice` to signal that only a subset of entities/versions is present.
 - Every entity includes only the active version unless selectors were provided. Selectors are recorded both at entity level (combined list) and per version (indicating which selector(s) matched).  
 - Version records always contain `version`, `status`, `hash`, `commit`, `committed_at`, and `payload`; optional fields include `meta` (metadata persisted alongside the version) and `selectors`.  
 - Full payloads are emitted so downstream LLM tooling can ingest the slice without additional round-trips.
@@ -159,9 +160,33 @@
 
 ## Implementation Notes
 - Module lives in `system/modules/export`; manifests declare parser + storage capabilities.
-- Parser normalises shorthand (`export demo foo,bar@2`), accepts optional description text, and supports comma-separated project slugs as well as the wildcard `*`.
+- Parser normalises shorthand (`export demo foo,bar@2`), accepts optional description/usage text, and supports comma-separated project slugs as well as the wildcard `*`.
 - ExportAgent relies on `BrainRepository` report helpers (`projectReport`, `entityReport`, `getEntityVersion`) to assemble metadata (hashes, commits, payloads, optional meta payload extensions) suitable for cache/diff workflows.
 - Version selectors (`@version`, `#hash`) raise descriptive errors when the requested revision cannot be located.
+
+## Presets
+- Presets live under `user/presets/export/<name>.json` (automatically created if missing). Use `export <project>:<preset>` to apply one. Presets only work with single-project exports.  
+- CLI selectors cannot be combined with presets; the preset controls the slice definition.  
+- Example preset:
+
+```json
+{
+  "description": "Character context slice",
+  "usage": "Use this slice to prime the LLM with current character beats.",
+  "selection": {
+    "entities": ["hero", "outline@14"],
+    "payload": { "path": "export", "equals": true }
+  },
+  "transform": {
+    "whitelist": ["title", "payload.chapters", "payload.name"],
+    "blacklist": ["payload.draftNotes"]
+  }
+}
+```
+
+- `selection.entities` accepts the same syntax as the CLI (slug, `@version`, `#commit`). `selection.payload.path` uses dot-notation relative to the version payload (e.g. `export`, `chapters.0.title`) and compares the value via `equals`.  
+- `transform.whitelist` keeps only the listed payload fields (dot-paths), while `transform.blacklist` removes fields. Whitelist is applied first, then blacklist.  
+- To extend the schema, adjust `ExportAgent::loadPreset()` and the related helpers (`preparePayloadFilter`, `prepareTransform`) – the Studio UI will adhere to the same structure.
 
 ## Outstanding Tasks
 - [ ] Add export presets/destination management (disk writes, streaming backends).
