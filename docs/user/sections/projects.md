@@ -52,7 +52,8 @@ Use this to refresh LLM hints or keep documentation in sync.
 
 ## Remove or Delete Projects
 
-- **Archive:** `project remove <slug>` marks the project inactive. All data stays on disk.
+- **Archive:** `project remove <slug>` marks the project inactive and deactivates every entity automatically so nothing continues to surface in exports by accident. The data remains on disk.
+- **Restore:** `project restore <slug> [--reactivate=0|1]` reactivates the project. Add `--reactivate=1` to turn entities back on (the latest version per entity becomes active when available).
 - **Delete:** `project delete <slug> [purge_commits=1]` removes the project permanently. Set `purge_commits=1` to drop commit history as well.
 
 Always create a backup (`brain backup`) before deleting data permanently.

@@ -29,6 +29,11 @@ return [
             'group' => 'project',
             'usage' => 'project remove <slug>',
         ],
+        'project restore' => [
+            'description' => 'Restore an archived project (optionally reactivate entities).',
+            'group' => 'project',
+            'usage' => 'project restore <slug> [--reactivate=0|1]',
+        ],
         'project delete' => [
             'description' => 'Permanently delete a project (dangerous).',
             'group' => 'project',

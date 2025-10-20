@@ -23,6 +23,9 @@ use function array_column;
 use function array_unique;
 use function basename;
 use function date;
+use function implode;
+use function array_shift;
+use function array_unshift;
 use function fclose;
 use function feof;
 use function file_get_contents;
@@ -59,6 +62,8 @@ use function usort;
  */
 final class BrainRepository
 {
+    private const DEFAULT_HIERARCHY_MAX_DEPTH = 10;
+
     private PathLocator $paths;
 
     private EventBus $events;
@@ -195,22 +200,64 @@ final class BrainRepository
     /**
      * Returns metadata for all entities within a project.
      *
+     * @param array<int, string>|null $pathSegments Optional hierarchy filter (null = all entities, [] = root level).
+     *
      * @return array<string, array<string, mixed>>
      */
-    public function listEntities(string $projectSlug): array
+    public function listEntities(string $projectSlug, ?array $pathSegments = null): array
     {
         $slug = $this->normalizeKey($projectSlug);
         $this->assertReadAllowed($slug);
+        $brain = $this->loadActiveBrain();
         $project = $this->getProject($slug);
         $entities = $project['entities'] ?? [];
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $slug);
         $result = [];
+        $filterSlugs = null;
+
+        if ($pathSegments !== null) {
+            if ($pathSegments === []) {
+                $filterSlugs = [];
+                foreach ($entities as $entitySlug => $entity) {
+                    if (!\is_array($entity)) {
+                        continue;
+                    }
+                    if (($entity['status'] ?? 'active') === 'deleted') {
+                        continue;
+                    }
+
+                    if ($this->hierarchyParent($hierarchy, $entitySlug) === null) {
+                        $filterSlugs[] = $entitySlug;
+                    }
+                }
+            } else {
+                $parentSlug = $this->resolveHierarchyPath($brain, $slug, $pathSegments);
+                $filterSlugs = $this->hierarchyChildren($hierarchy, $parentSlug);
+            }
+        }
 
         foreach ($entities as $entitySlug => $entity) {
             if (!\is_array($entity)) {
                 continue;
             }
 
-            $result[$entitySlug] = $this->summarizeEntity($entitySlug, $entity);
+            if (($entity['status'] ?? 'active') === 'deleted') {
+                continue;
+            }
+
+            if ($filterSlugs !== null && !in_array($entitySlug, $filterSlugs, true)) {
+                continue;
+            }
+
+            $summary = $this->summarizeEntity($entitySlug, $entity);
+            $summary['parent'] = $this->hierarchyParent($hierarchy, $entitySlug);
+            $summary['path'] = $this->buildEntityPath($hierarchy, $entitySlug);
+            $summary['path_string'] = $summary['path'] !== [] ? implode('/', $summary['path']) : null;
+            if ($pathSegments !== null) {
+                $summary['listing_parent_path'] = $pathSegments;
+            }
+
+            $result[$entitySlug] = $summary;
         }
 
         return $result;
@@ -356,6 +403,25 @@ final class BrainRepository
         $brain['projects'][$slug]['updated_at'] = $timestamp;
         $brain['meta']['updated_at'] = $timestamp;
 
+        if (isset($brain['projects'][$slug]['entities']) && \is_array($brain['projects'][$slug]['entities'])) {
+            foreach ($brain['projects'][$slug]['entities'] as $entitySlug => &$entity) {
+                if (!\is_array($entity)) {
+                    continue;
+                }
+
+                $entity['status'] = 'inactive';
+                $entity['archived_at'] = $timestamp;
+                $entity['updated_at'] = $timestamp;
+
+                if (isset($entity['active_version']) && isset($entity['versions'][$entity['active_version']])) {
+                    $entity['versions'][$entity['active_version']]['status'] = 'inactive';
+                }
+
+                $entity['active_version'] = null;
+            }
+            unset($entity);
+        }
+
         $this->activeBrainData = $brain;
         $this->persistActiveBrain();
 
@@ -364,6 +430,73 @@ final class BrainRepository
         ]);
 
         return $this->projectReport($slug, false);
+    }
+
+    /**
+     * Restores an archived project and optionally reactivates its entities.
+     *
+     * @param array<string, mixed> $options
+     */
+    public function restoreProject(string $projectSlug, array $options = []): array
+    {
+        $slug = $this->normalizeKey($projectSlug);
+        $brain = $this->loadActiveBrain();
+
+        if (!isset($brain['projects'][$slug])) {
+            throw new StorageException(sprintf('Project "%s" does not exist.', $projectSlug));
+        }
+
+        $this->assertWriteAllowed($slug);
+
+        $project = &$brain['projects'][$slug];
+
+        if (($project['status'] ?? 'active') === 'active') {
+            throw new StorageException(sprintf('Project "%s" is already active.', $projectSlug));
+        }
+
+        $timestamp = $this->timestamp();
+        $project['status'] = 'active';
+        $project['archived_at'] = null;
+        $project['updated_at'] = $timestamp;
+
+        $reactivateEntities = ($options['reactivate_entities'] ?? false) === true;
+        $reactivated = [];
+        $warnings = [];
+
+        if ($reactivateEntities && isset($project['entities']) && \is_array($project['entities'])) {
+            foreach ($project['entities'] as $entitySlug => &$entity) {
+                if (!\is_array($entity)) {
+                    continue;
+                }
+
+                $outcome = $this->reactivateEntityRecord($entity, $timestamp);
+                if ($outcome['reactivated']) {
+                    $reactivated[] = $entitySlug;
+                } elseif ($outcome['reason'] === 'no_versions') {
+                    $warnings[] = sprintf('Entity "%s" has no versions to reactivate.', $entitySlug);
+                }
+            }
+            unset($entity);
+        }
+
+        $brain['projects'][$slug] = $project;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.project.restored', [
+            'project' => $slug,
+            'reactivate_entities' => $reactivateEntities,
+            'reactivated_entities' => $reactivated,
+        ]);
+
+        return [
+            'project' => $this->projectReport($slug, false),
+            'reactivate_entities' => $reactivateEntities,
+            'reactivated_entities' => $reactivated,
+            'warnings' => $warnings,
+        ];
     }
 
     public function deleteProject(string $projectSlug, bool $purgeCommits = true): void
@@ -479,6 +612,7 @@ final class BrainRepository
         $this->assertReadAllowed($slugProject);
         $slugEntity = $this->normalizeKey($entitySlug);
 
+        $brain = $this->loadActiveBrain();
         $project = $this->getProject($slugProject);
 
         if (!isset($project['entities'][$slugEntity]) || !\is_array($project['entities'][$slugEntity])) {
@@ -491,6 +625,11 @@ final class BrainRepository
         if ($includeVersions) {
             $summary['versions'] = $this->listEntityVersions($slugProject, $slugEntity);
         }
+
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $slugProject);
+        $summary['parent'] = $this->hierarchyParent($hierarchy, $slugEntity);
+        $summary['path'] = $this->buildEntityPath($hierarchy, $slugEntity);
+        $summary['path_string'] = $summary['path'] !== [] ? implode('/', $summary['path']) : null;
 
         return $summary;
     }
@@ -533,7 +672,7 @@ final class BrainRepository
         return $this->entityReport($slugProject, $slugEntity, false);
     }
 
-    public function deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true): void
+    public function deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true, array $options = []): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
         $this->assertWriteAllowed($slugProject);
@@ -551,23 +690,44 @@ final class BrainRepository
             throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
         }
 
-        unset($brain['projects'][$slugProject]['entities'][$slugEntity]);
+        $recursive = ($options['recursive'] ?? false) === true;
 
-        if ($purgeCommits && isset($brain['commits']) && \is_array($brain['commits'])) {
-            foreach ($brain['commits'] as $hash => $commit) {
-                if (!\is_array($commit)) {
-                    continue;
-                }
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $slugProject);
+        $descendants = $this->collectDescendants($hierarchy, $slugEntity);
+        $directChildren = $this->hierarchyChildren($hierarchy, $slugEntity);
+        $warnings = [];
+        $promotedChildren = [];
 
-                if (($commit['project'] ?? null) === $slugProject && ($commit['entity'] ?? null) === $slugEntity) {
-                    unset($brain['commits'][$hash]);
-                }
+        if ($recursive) {
+            $deletedDescendants = array_reverse($descendants);
+            foreach ($deletedDescendants as $childSlug) {
+                $this->deleteSingleEntity($brain, $slugProject, $childSlug, $purgeCommits);
+                $this->clearHierarchyEntry($brain, $slugProject, $childSlug);
             }
+            if ($deletedDescendants !== []) {
+                $warnings[] = sprintf(
+                    'Entity "%s" recursively deleted %d descendant%s.',
+                    $slugEntity,
+                    \count($deletedDescendants),
+                    \count($deletedDescendants) === 1 ? '' : 's'
+                );
+            }
+        } else {
+            $promotedChildren = $directChildren;
+            if ($promotedChildren !== []) {
+                $warnings[] = sprintf(
+                    'Entity "%s" had %d child%s promoted to the root level before deletion.',
+                    $slugEntity,
+                    \count($promotedChildren),
+                    \count($promotedChildren) === 1 ? '' : 'ren'
+                );
+            }
+
+            $this->promoteChildren($brain, $slugProject, $slugEntity, null);
         }
 
-        $timestamp = $this->timestamp();
-        $brain['projects'][$slugProject]['updated_at'] = $timestamp;
-        $brain['meta']['updated_at'] = $timestamp;
+        $this->deleteSingleEntity($brain, $slugProject, $slugEntity, $purgeCommits);
+        $this->clearHierarchyEntry($brain, $slugProject, $slugEntity);
 
         $this->activeBrainData = $brain;
         $this->persistActiveBrain();
@@ -576,6 +736,9 @@ final class BrainRepository
             'project' => $slugProject,
             'entity' => $slugEntity,
             'purged_commits' => $purgeCommits,
+            'recursive' => $recursive,
+            'descendants' => $recursive ? $descendants : [],
+            'promoted_children' => $recursive ? [] : $promotedChildren,
         ]);
 
         AavionDB::debugLog('Entity deleted.', [
@@ -584,6 +747,18 @@ final class BrainRepository
             'remaining_entities' => \count($brain['projects'][$slugProject]['entities'] ?? []),
             'source' => 'storage:brain',
         ]);
+
+        return [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'deleted' => true,
+            'warnings' => $warnings,
+            'cascade' => [
+                'recursive' => $recursive,
+                'promoted_children' => $promotedChildren,
+                'deleted_descendants' => $recursive ? $descendants : [],
+            ],
+        ];
     }
 
     public function deleteBrain(string $slug): array
@@ -620,7 +795,7 @@ final class BrainRepository
         ];
     }
 
-    public function deactivateEntity(string $projectSlug, string $entitySlug): array
+    public function deactivateEntity(string $projectSlug, string $entitySlug, array $options = []): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
         $this->assertWriteAllowed($slugProject);
@@ -632,18 +807,65 @@ final class BrainRepository
             throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
         }
 
-        $entity = &$brain['projects'][$slugProject]['entities'][$slugEntity];
-        $activeVersion = $entity['active_version'] ?? null;
-
-        if ($activeVersion === null || !isset($entity['versions'][$activeVersion])) {
-            throw new StorageException(sprintf('Entity "%s" in project "%s" does not have an active version.', $entitySlug, $projectSlug));
-        }
+        $recursive = ($options['recursive'] ?? false) === true;
 
         $timestamp = $this->timestamp();
-        $entity['versions'][$activeVersion]['status'] = 'inactive';
-        $entity['active_version'] = null;
-        $entity['status'] = 'inactive';
-        $entity['updated_at'] = $timestamp;
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $slugProject);
+
+        $descendants = $this->collectDescendants($hierarchy, $slugEntity);
+        $directChildren = $this->hierarchyChildren($hierarchy, $slugEntity);
+        $targets = $recursive ? array_merge($descendants, [$slugEntity]) : [$slugEntity];
+        $warnings = [];
+
+        foreach ($targets as $targetSlug) {
+            if (!isset($brain['projects'][$slugProject]['entities'][$targetSlug])) {
+                continue;
+            }
+
+            $entityRef = &$brain['projects'][$slugProject]['entities'][$targetSlug];
+            $activeVersion = $entityRef['active_version'] ?? null;
+
+            if ($activeVersion !== null && isset($entityRef['versions'][$activeVersion])) {
+                $entityRef['versions'][$activeVersion]['status'] = 'inactive';
+            }
+
+            foreach ($entityRef['versions'] ?? [] as &$versionRecord) {
+                if (!\is_array($versionRecord)) {
+                    continue;
+                }
+                if (($versionRecord['status'] ?? 'inactive') === 'active') {
+                    $versionRecord['status'] = 'inactive';
+                }
+            }
+            unset($versionRecord);
+
+            $entityRef['active_version'] = null;
+            $entityRef['status'] = 'inactive';
+            $entityRef['archived_at'] = $timestamp;
+            $entityRef['updated_at'] = $timestamp;
+        }
+
+        $promotedChildren = [];
+        if (!$recursive) {
+            $promotedChildren = $directChildren;
+            if ($promotedChildren !== []) {
+                $warnings[] = sprintf(
+                    'Entity "%s" had %d child%s promoted to the root level.',
+                    $slugEntity,
+                    \count($promotedChildren),
+                    \count($promotedChildren) === 1 ? '' : 'ren'
+                );
+            }
+
+            $this->promoteChildren($brain, $slugProject, $slugEntity, null);
+        } elseif ($descendants !== []) {
+            $warnings[] = sprintf(
+                'Entity "%s" recursively affected %d descendant%s.',
+                $slugEntity,
+                \count($descendants),
+                \count($descendants) === 1 ? '' : 's'
+            );
+        }
 
         $brain['projects'][$slugProject]['updated_at'] = $timestamp;
         $brain['meta']['updated_at'] = $timestamp;
@@ -654,10 +876,20 @@ final class BrainRepository
         $this->events->emit('brain.entity.deactivated', [
             'project' => $slugProject,
             'entity' => $slugEntity,
-            'version' => $activeVersion,
+            'recursive' => $recursive,
+            'descendants' => $recursive ? $descendants : [],
+            'promoted_children' => $recursive ? [] : $promotedChildren,
         ]);
 
-        return $this->entityReport($slugProject, $slugEntity, true);
+        $report = $this->entityReport($slugProject, $slugEntity, true);
+        $report['warnings'] = $warnings;
+        $report['cascade'] = [
+            'recursive' => $recursive,
+            'promoted_children' => $promotedChildren,
+            'affected_descendants' => $recursive ? $descendants : [],
+        ];
+
+        return $report;
     }
 
     public function deleteEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
@@ -1449,6 +1681,15 @@ final class BrainRepository
         $entity['status'] = 'active';
         $entity['archived_at'] = null;
 
+        $this->ensureProjectHierarchy($brain, $slugProject);
+
+        $hierarchyInfo = null;
+        if (isset($options['parent_path']) && \is_array($options['parent_path'])) {
+            $desiredPath = array_values(array_filter(array_map('strval', $options['parent_path']), static fn ($part) => $part !== ''));
+            $hierarchyInfo = $this->resolveParentPath($brain, $slugProject, $slugEntity, $desiredPath);
+            $this->assignEntityParent($brain, $slugProject, $slugEntity, $hierarchyInfo['parent']);
+        }
+
         $mergePayload = $this->extractMergeOption($options['merge'] ?? null);
         $sourceReference = $this->normalizeReference($options['source_reference'] ?? null);
         $fieldsetProvided = ($options['fieldset_provided'] ?? false) === true;
@@ -1599,6 +1840,12 @@ final class BrainRepository
 
         $this->persistActiveBrain();
 
+        $hierarchyState = [
+            'parent' => $this->hierarchyParent($brain['projects'][$slugProject]['hierarchy'], $slugEntity),
+            'path' => $this->buildEntityPath($brain['projects'][$slugProject]['hierarchy'], $slugEntity),
+            'warnings' => $hierarchyInfo['warnings'] ?? [],
+        ];
+
         $this->events->emit('brain.entity.saved', [
             'project' => $slugProject,
             'entity' => $slugEntity,
@@ -1629,6 +1876,7 @@ final class BrainRepository
             'fieldset' => $entity['fieldset'] ?? null,
             'source_reference' => $sourceReference,
             'fieldset_reference' => $fieldsetReference,
+            'hierarchy' => $hierarchyState,
         ];
     }
 
@@ -3590,6 +3838,10 @@ final class BrainRepository
             'status' => 'active',
             'archived_at' => null,
             'entities' => [],
+            'hierarchy' => [
+                'parents' => [],
+                'children' => [],
+            ],
         ];
     }
 
@@ -4144,6 +4396,479 @@ final class BrainRepository
         }
 
         return null;
+    }
+
+    private function hierarchyMaxDepth(): int
+    {
+        $configured = null;
+
+        if (isset($this->options['hierarchy']['max_depth'])) {
+            $configured = (int) $this->options['hierarchy']['max_depth'];
+        } else {
+            $config = $this->getConfigValue('hierarchy.max_depth', null, true);
+            if ($config !== null) {
+                $configured = (int) $config;
+            }
+        }
+
+        if ($configured === null || $configured <= 0) {
+            return self::DEFAULT_HIERARCHY_MAX_DEPTH;
+        }
+
+        return $configured;
+    }
+
+    /**
+     * @return array{parents: array<string,string>, children: array<string,array<int,string>>}
+     */
+    private function &ensureProjectHierarchy(array &$brain, string $projectSlug): array
+    {
+        if (!isset($brain['projects'][$projectSlug]['hierarchy']) || !\is_array($brain['projects'][$projectSlug]['hierarchy'])) {
+            $brain['projects'][$projectSlug]['hierarchy'] = [
+                'parents' => [],
+                'children' => [],
+            ];
+        }
+
+        $hierarchy =& $brain['projects'][$projectSlug]['hierarchy'];
+
+        if (!isset($hierarchy['parents']) || !\is_array($hierarchy['parents'])) {
+            $hierarchy['parents'] = [];
+        }
+
+        if (!isset($hierarchy['children']) || !\is_array($hierarchy['children'])) {
+            $hierarchy['children'] = [];
+        }
+
+        return $hierarchy;
+    }
+
+    private function assignEntityParent(array &$brain, string $projectSlug, string $entitySlug, ?string $parentSlug): void
+    {
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $projectSlug);
+
+        $oldParent = $hierarchy['parents'][$entitySlug] ?? null;
+
+        if ($oldParent !== null) {
+            $children = $hierarchy['children'][$oldParent] ?? [];
+            $children = array_values(array_filter($children, static fn ($child) => $child !== $entitySlug));
+            if ($children === []) {
+                unset($hierarchy['children'][$oldParent]);
+            } else {
+                $hierarchy['children'][$oldParent] = $children;
+            }
+        }
+
+        if ($parentSlug === null || $parentSlug === '') {
+            unset($hierarchy['parents'][$entitySlug]);
+            return;
+        }
+
+        $hierarchy['parents'][$entitySlug] = $parentSlug;
+
+        $siblings = $hierarchy['children'][$parentSlug] ?? [];
+        $siblings[] = $entitySlug;
+        $hierarchy['children'][$parentSlug] = array_values(array_unique($siblings));
+    }
+
+    private function hierarchyParent(array $hierarchy, string $entitySlug): ?string
+    {
+        return isset($hierarchy['parents'][$entitySlug]) ? (string) $hierarchy['parents'][$entitySlug] : null;
+    }
+
+    private function hierarchyChildren(array $hierarchy, string $entitySlug): array
+    {
+        return isset($hierarchy['children'][$entitySlug]) && \is_array($hierarchy['children'][$entitySlug])
+            ? array_values($hierarchy['children'][$entitySlug])
+            : [];
+    }
+
+    private function collectDescendants(array $hierarchy, string $entitySlug): array
+    {
+        $result = [];
+        $queue = [$entitySlug];
+
+        while ($queue !== []) {
+            $current = array_shift($queue);
+            $children = $this->hierarchyChildren($hierarchy, $current);
+
+            foreach ($children as $child) {
+                if (!in_array($child, $result, true)) {
+                    $result[] = $child;
+                    $queue[] = $child;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    private function wouldCreateCycle(array $hierarchy, string $entitySlug, string $candidateParent): bool
+    {
+        if ($candidateParent === $entitySlug) {
+            return true;
+        }
+
+        $descendants = $this->collectDescendants($hierarchy, $entitySlug);
+
+        return in_array($candidateParent, $descendants, true);
+    }
+
+    private function resolveParentPath(array &$brain, string $projectSlug, string $entitySlug, array $pathSegments): array
+    {
+        $warnings = [];
+        $applied = [];
+
+        $maxDepth = $this->hierarchyMaxDepth();
+        if ($pathSegments !== [] && \count($pathSegments) > $maxDepth) {
+            $pathSegments = array_slice($pathSegments, -$maxDepth);
+            $warnings[] = sprintf('Hierarchy depth exceeds %d; truncated to deepest allowed path.', $maxDepth);
+        }
+
+        $project = $brain['projects'][$projectSlug] ?? null;
+        if (!\is_array($project)) {
+            return [
+                'parent' => null,
+                'path' => [],
+                'warnings' => array_merge($warnings, ['Project not found; entity will be placed at root.']),
+            ];
+        }
+
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $projectSlug);
+
+        foreach ($pathSegments as $segment) {
+            $parentSlug = $this->normalizeKey($segment);
+
+            if ($parentSlug === '' || $parentSlug === $entitySlug) {
+                $warnings[] = sprintf('Cannot use "%s" as parent.', $segment);
+                break;
+            }
+
+            if (!isset($project['entities'][$parentSlug])) {
+                $warnings[] = sprintf('Parent "%s" does not exist; entity will be placed at the deepest valid level.', $segment);
+                break;
+            }
+
+            if ($this->wouldCreateCycle($hierarchy, $entitySlug, $parentSlug)) {
+                $warnings[] = sprintf('Parent "%s" would create a cycle; ignoring.', $segment);
+                break;
+            }
+
+            $applied[] = $parentSlug;
+        }
+
+        $parent = $applied !== [] ? end($applied) : null;
+
+        return [
+            'parent' => $parent,
+            'path' => $applied,
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
+     * @param array<int, string> $pathSegments
+     */
+    private function resolveHierarchyPath(array $brain, string $projectSlug, array $pathSegments): string
+    {
+        if ($pathSegments === []) {
+            throw new StorageException('Hierarchy path cannot be empty.');
+        }
+
+        $project = $brain['projects'][$projectSlug] ?? null;
+        if (!\is_array($project) || !isset($project['entities']) || !\is_array($project['entities'])) {
+            throw new StorageException(sprintf('Project "%s" not found in active brain.', $projectSlug));
+        }
+
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $projectSlug);
+        $currentParent = null;
+        $resolved = null;
+
+        foreach ($pathSegments as $segment) {
+            $candidate = $this->normalizeKey($segment);
+
+            if (!isset($project['entities'][$candidate]) || !\is_array($project['entities'][$candidate])) {
+                throw new StorageException(sprintf('Hierarchy segment "%s" does not exist in project "%s".', $segment, $projectSlug));
+            }
+
+            $actualParent = $this->hierarchyParent($hierarchy, $candidate);
+            if ($actualParent !== $currentParent) {
+                if ($currentParent === null) {
+                    throw new StorageException(sprintf('Hierarchy segment "%s" is not a root-level entity.', $segment));
+                }
+
+                throw new StorageException(sprintf('Hierarchy segment "%s" is not a child of "%s".', $segment, $currentParent));
+            }
+
+            $currentParent = $candidate;
+            $resolved = $candidate;
+        }
+
+        if ($resolved === null) {
+            throw new StorageException('Unable to resolve hierarchy path.');
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * @param array<int, string> $currentParentPath
+     * @param array<int, string> $targetParentPath
+     * @param array<string, mixed> $options
+     */
+    public function moveEntity(string $projectSlug, string $entitySlug, array $currentParentPath, array $targetParentPath, array $options = []): array
+    {
+        $slugProject = $this->normalizeKey($projectSlug);
+        $slugEntity = $this->normalizeKey($entitySlug);
+
+        $mode = strtolower((string) ($options['mode'] ?? 'merge'));
+        if (!in_array($mode, ['merge', 'replace'], true)) {
+            throw new StorageException(sprintf('Unsupported move mode "%s".', $mode));
+        }
+
+        $this->assertWriteAllowed($slugProject);
+
+        $brain = $this->loadActiveBrain();
+        $project = $this->getProject($slugProject);
+
+        if (!isset($project['entities'][$slugEntity]) || !\is_array($project['entities'][$slugEntity])) {
+            throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        }
+
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $slugProject);
+        $actualPath = $this->buildEntityPath($hierarchy, $slugEntity);
+
+        $normalizedCurrent = array_map(fn (string $segment): string => $this->normalizeKey($segment), $currentParentPath);
+        if ($actualPath !== $normalizedCurrent) {
+            throw new StorageException(sprintf(
+                'Entity "%s" does not match the provided source path.',
+                $entitySlug
+            ));
+        }
+
+        $currentParent = $this->hierarchyParent($hierarchy, $slugEntity);
+
+        $normalizedTarget = array_map(fn (string $segment): string => $this->normalizeKey($segment), $targetParentPath);
+        $targetParent = null;
+        if ($normalizedTarget !== []) {
+            $targetParent = $this->resolveHierarchyPath($brain, $slugProject, $normalizedTarget);
+        }
+
+        if ($targetParent === $slugEntity) {
+            throw new StorageException('Entity cannot be its own parent.');
+        }
+
+        $descendants = $this->collectDescendants($hierarchy, $slugEntity);
+        if ($targetParent !== null && in_array($targetParent, $descendants, true)) {
+            throw new StorageException(sprintf(
+                'Cannot move entity "%s" beneath its own descendant "%s".',
+                $entitySlug,
+                $targetParent
+            ));
+        }
+
+        if ($currentParent === $targetParent) {
+            return [
+                'project' => $slugProject,
+                'entity' => $slugEntity,
+                'mode' => $mode,
+                'old_parent' => $currentParent,
+                'new_parent' => $targetParent,
+                'old_path' => $actualPath,
+                'new_path' => $actualPath,
+                'descendants' => $descendants,
+                'warnings' => [],
+                'changed' => false,
+            ];
+        }
+
+        $this->assignEntityParent($brain, $slugProject, $slugEntity, $targetParent);
+
+        $warnings = [];
+        if ($mode === 'replace') {
+            $warnings[] = 'Replace mode currently behaves like merge; no target pruning applied.';
+        }
+
+        $timestamp = $this->timestamp();
+        $brain['projects'][$slugProject]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $slugProject);
+        $newPath = $this->buildEntityPath($hierarchy, $slugEntity);
+
+        $this->events->emit('brain.entity.moved', [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'mode' => $mode,
+            'old_parent' => $currentParent,
+            'new_parent' => $targetParent,
+            'old_path' => $actualPath,
+            'new_path' => $newPath,
+        ]);
+
+        return [
+            'project' => $slugProject,
+            'entity' => $slugEntity,
+            'mode' => $mode,
+            'old_parent' => $currentParent,
+            'new_parent' => $targetParent,
+            'old_path' => $actualPath,
+            'old_path_string' => $actualPath === [] ? null : implode('/', $actualPath),
+            'new_path' => $newPath,
+            'new_path_string' => $newPath === [] ? null : implode('/', $newPath),
+            'descendants' => $descendants,
+            'warnings' => $warnings,
+            'changed' => true,
+        ];
+    }
+
+    private function promoteChildren(array &$brain, string $projectSlug, string $entitySlug, ?string $newParent = null): void
+    {
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $projectSlug);
+        $children = $this->hierarchyChildren($hierarchy, $entitySlug);
+
+        foreach ($children as $child) {
+            $this->assignEntityParent($brain, $projectSlug, $child, $newParent);
+        }
+    }
+
+    /**
+     * @return array{reactivated: bool, active_version: ?string, reason: ?string}
+     */
+    private function reactivateEntityRecord(array &$entity, string $timestamp): array
+    {
+        if (!isset($entity['versions']) || !\is_array($entity['versions']) || $entity['versions'] === []) {
+            $entity['status'] = 'inactive';
+            $entity['archived_at'] = null;
+            $entity['updated_at'] = $timestamp;
+
+            return [
+                'reactivated' => false,
+                'active_version' => null,
+                'reason' => 'no_versions',
+            ];
+        }
+
+        $target = $entity['active_version'] ?? null;
+        if ($target === null || !isset($entity['versions'][$target])) {
+            $keys = array_keys($entity['versions']);
+            \rsort($keys, SORT_NUMERIC);
+            $target = (string) ($keys[0] ?? null);
+        }
+
+        if ($target === null) {
+            $entity['status'] = 'inactive';
+            $entity['archived_at'] = null;
+            $entity['updated_at'] = $timestamp;
+
+            return [
+                'reactivated' => false,
+                'active_version' => null,
+                'reason' => 'no_versions',
+            ];
+        }
+
+        foreach ($entity['versions'] as $versionKey => &$record) {
+            if (!\is_array($record)) {
+                continue;
+            }
+
+            $record['status'] = ((string) $versionKey === (string) $target) ? 'active' : 'inactive';
+        }
+        unset($record);
+
+        $entity['active_version'] = (string) $target;
+        $entity['status'] = 'active';
+        $entity['archived_at'] = null;
+        $entity['updated_at'] = $timestamp;
+
+        return [
+            'reactivated' => true,
+            'active_version' => (string) $target,
+            'reason' => null,
+        ];
+    }
+
+    private function buildEntityPath(array $hierarchy, string $entitySlug): array
+    {
+        $path = [];
+        $current = $entitySlug;
+
+        while (true) {
+            $parent = $this->hierarchyParent($hierarchy, $current);
+            if ($parent === null) {
+                break;
+            }
+
+            array_unshift($path, $parent);
+            $current = $parent;
+        }
+
+        return $path;
+    }
+
+    private function removeEntityFromHierarchy(array &$brain, string $projectSlug, string $entitySlug, bool $promoteChildren = true): void
+    {
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $projectSlug);
+
+        $parent = $this->hierarchyParent($hierarchy, $entitySlug);
+        if ($parent !== null) {
+            $this->assignEntityParent($brain, $projectSlug, $entitySlug, null);
+        }
+
+        if ($promoteChildren) {
+            foreach ($this->hierarchyChildren($hierarchy, $entitySlug) as $child) {
+                $this->assignEntityParent($brain, $projectSlug, $child, null);
+            }
+        } else {
+            foreach ($this->hierarchyChildren($hierarchy, $entitySlug) as $child) {
+                // Remove child references entirely; caller will handle follow-up.
+                unset($hierarchy['parents'][$child]);
+            }
+            unset($hierarchy['children'][$entitySlug]);
+        }
+    }
+
+    private function clearHierarchyEntry(array &$brain, string $projectSlug, string $entitySlug): void
+    {
+        $hierarchy =& $this->ensureProjectHierarchy($brain, $projectSlug);
+        unset($hierarchy['parents'][$entitySlug]);
+        unset($hierarchy['children'][$entitySlug]);
+        foreach ($hierarchy['children'] as $parentSlug => &$children) {
+            $children = array_values(array_filter($children, static fn ($child) => $child !== $entitySlug));
+            if ($children === []) {
+                unset($hierarchy['children'][$parentSlug]);
+            }
+        }
+        unset($children);
+    }
+
+    private function deleteSingleEntity(array &$brain, string $projectSlug, string $entitySlug, bool $purgeCommits): void
+    {
+        if (!isset($brain['projects'][$projectSlug]['entities'][$entitySlug])) {
+            return;
+        }
+
+        unset($brain['projects'][$projectSlug]['entities'][$entitySlug]);
+
+        if ($purgeCommits && isset($brain['commits']) && \is_array($brain['commits'])) {
+            foreach ($brain['commits'] as $hash => $commit) {
+                if (!\is_array($commit)) {
+                    continue;
+                }
+
+                if (($commit['project'] ?? null) === $projectSlug && ($commit['entity'] ?? null) === $entitySlug) {
+                    unset($brain['commits'][$hash]);
+                }
+            }
+        }
+
+        $timestamp = $this->timestamp();
+        $brain['projects'][$projectSlug]['updated_at'] = $timestamp;
+        $brain['meta']['updated_at'] = $timestamp;
     }
 
     private function compressBackup(string $path): string

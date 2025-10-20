@@ -14,9 +14,11 @@ use function array_map;
 use function array_shift;
 use function array_unshift;
 use function array_values;
+use function array_unique;
 use function array_filter;
 use function count;
 use function explode;
+use function implode;
 use function in_array;
 use function is_array;
 use function is_bool;
@@ -53,6 +55,7 @@ final class EntityAgent
         $this->registerVersionsCommand();
         $this->registerShowCommand();
         $this->registerSaveCommand();
+        $this->registerMoveCommand();
         $this->registerRemoveCommand();
         $this->registerDeleteCommand();
         $this->registerRestoreCommand();
@@ -84,6 +87,9 @@ final class EntityAgent
                 case 'save':
                     $context->setAction('entity save');
                     break;
+                case 'move':
+                    $context->setAction('entity move');
+                    break;
                 case 'remove':
                     $context->setAction('entity remove');
                     break;
@@ -107,8 +113,8 @@ final class EntityAgent
     {
         $parameters = [];
 
-        $expectProject = in_array($action, ['entity list', 'entity versions', 'entity show', 'entity save', 'entity delete', 'entity restore', 'entity remove'], true);
-        $expectEntity = in_array($action, ['entity versions', 'entity show', 'entity save', 'entity delete', 'entity restore', 'entity remove'], true);
+        $expectProject = in_array($action, ['entity list', 'entity versions', 'entity show', 'entity save', 'entity delete', 'entity restore', 'entity remove', 'entity move'], true);
+        $expectEntity = in_array($action, ['entity versions', 'entity show', 'entity save', 'entity delete', 'entity restore', 'entity remove', 'entity move'], true);
         $expectReference = in_array($action, ['entity show', 'entity restore'], true);
 
         if ($expectProject && $tokens !== []) {
@@ -117,6 +123,20 @@ final class EntityAgent
 
         if ($expectEntity && $tokens !== []) {
             $parameters['entity'] = array_shift($tokens);
+        }
+
+        if ($action === 'entity move' && $tokens !== []) {
+            $next = $tokens[0];
+            if (!str_starts_with($next, '--') && strpos($next, '=') === false) {
+                $parameters['target_path'] = array_shift($tokens);
+            }
+        }
+
+        if ($action === 'entity list' && $tokens !== []) {
+            $next = $tokens[0];
+            if (!str_starts_with($next, '--') && strpos($next, '=') === false) {
+                $parameters['parent_path'] = array_shift($tokens);
+            }
         }
 
         if ($expectReference && $tokens !== []) {
@@ -169,7 +189,7 @@ final class EntityAgent
         }, [
             'description' => 'List entities inside a project.',
             'group' => 'entity',
-            'usage' => 'entity list <project> [with_versions=1]',
+            'usage' => 'entity list <project> [parent/path] [with_versions=1]',
         ]);
     }
 
@@ -203,6 +223,17 @@ final class EntityAgent
             'description' => 'Persist a new version for an entity.',
             'group' => 'entity',
             'usage' => 'entity save <project> <entity> {json payload}',
+        ]);
+    }
+
+    private function registerMoveCommand(): void
+    {
+        $this->context->commands()->register('entity move', function (array $parameters): CommandResponse {
+            return $this->entityMoveCommand($parameters);
+        }, [
+            'description' => 'Move an entity (and its subtree) to a new parent path.',
+            'group' => 'entity',
+            'usage' => 'entity move <project> <source-path> <target-path> [--mode=merge|replace]',
         ]);
     }
 
@@ -247,23 +278,43 @@ final class EntityAgent
         }
 
         $withVersions = $this->toBool($parameters['with_versions'] ?? $parameters['versions'] ?? false);
+        $parentOption = $parameters['parent'] ?? $parameters['path'] ?? ($parameters['parent_path'] ?? null);
+        $parentPath = null;
+
+        if ($parentOption !== null && $parentOption !== '') {
+            $parentPath = $this->normalizeParentOption($parentOption);
+        } elseif ($parentOption !== null && $parentOption === '') {
+            $parentPath = [];
+        }
 
         try {
+            $entityMap = $this->brains->listEntities($project, $parentPath);
+
             if ($withVersions) {
                 $entities = [];
-                foreach ($this->brains->listEntities($project) as $slug => $summary) {
+                foreach ($entityMap as $slug => $summary) {
                     $summary['versions'] = $this->brains->listEntityVersions($project, $slug);
                     $entities[] = $summary;
                 }
             } else {
-                $entities = \array_values($this->brains->listEntities($project));
+                $entities = \array_values($entityMap);
+            }
+
+            $filterMeta = null;
+            if ($parentPath !== null) {
+                $parentSlug = $parentPath === [] ? null : $parentPath[\count($parentPath) - 1];
+                $filterMeta = [
+                    'path' => $parentPath,
+                    'parent' => $parentSlug,
+                ];
             }
 
             return CommandResponse::success('entity list', [
                 'project' => $project,
                 'count' => \count($entities),
                 'entities' => $entities,
-            ], sprintf('Entities for project "%s".', $project));
+                'filter' => $filterMeta,
+            ], sprintf('Entities for project "%s"%s.', $project, $filterMeta !== null ? sprintf(' (scope: %s)', $filterMeta['parent'] ?? 'root') : ''));
         } catch (Throwable $exception) {
             $this->logger->error('Failed to list entities', [
                 'project' => $project,
@@ -271,6 +322,69 @@ final class EntityAgent
             ]);
 
             return CommandResponse::error('entity list', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function entityMoveCommand(array $parameters): CommandResponse
+    {
+        $project = $this->extractProject($parameters, 'entity move');
+        $source = $this->extractEntity($parameters, 'entity move');
+        $target = $parameters['target_path'] ?? ($parameters['target'] ?? null);
+
+        if ($project === null || $source === null || $target === null) {
+            return CommandResponse::error('entity move', 'Parameters "project", "source", and "target" are required.');
+        }
+
+        $sourceSelector = $this->parsePathSelector($source, false);
+        $entitySlug = $sourceSelector['slug'];
+
+        if ($entitySlug === null || $entitySlug === '') {
+            return CommandResponse::error('entity move', 'Source entity slug cannot be empty.');
+        }
+
+        $mode = isset($parameters['mode']) ? strtolower(trim((string) $parameters['mode'])) : 'merge';
+        if ($mode === '') {
+            $mode = 'merge';
+        }
+
+        if (!in_array($mode, ['merge', 'replace'], true)) {
+            return CommandResponse::error('entity move', sprintf('Unsupported mode "%s" (use merge or replace).', $mode));
+        }
+
+        $targetPath = $this->normalizeParentOption($target);
+
+        try {
+            $result = $this->brains->moveEntity($project, $entitySlug, $sourceSelector['path'], $targetPath, [
+                'mode' => $mode,
+            ]);
+
+            $newPath = $result['new_path'] ?? [];
+            $pathString = $newPath === [] ? '/' : implode('/', $newPath);
+
+            $meta = [];
+            if (!empty($result['warnings'])) {
+                $meta['warnings'] = $result['warnings'];
+            }
+
+            $message = $result['changed'] ?? true
+                ? sprintf('Entity "%s" moved to %s.', $entitySlug, $pathString === '/' ? 'root' : $pathString)
+                : sprintf('Entity "%s" already located at %s.', $entitySlug, $pathString === '/' ? 'root' : $pathString);
+
+            return CommandResponse::success('entity move', $result, $message, $meta);
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to move entity', [
+                'project' => $project,
+                'source' => $source,
+                'target' => $target,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('entity move', $exception->getMessage(), [
                 'exception' => [
                     'message' => $exception->getMessage(),
                     'type' => get_class($exception),
@@ -321,17 +435,27 @@ final class EntityAgent
             return CommandResponse::error('entity show', 'Parameters "project" and "entity" are required.');
         }
 
+        $pathSelector = $this->parsePathSelector($entity, false);
+        $entitySlug = $pathSelector['slug'];
+        if ($entitySlug === null || $entitySlug === '') {
+            return CommandResponse::error('entity show', 'Entity slug cannot be empty.');
+        }
+
         $reference = isset($parameters['reference']) ? (string) $parameters['reference'] : '';
+        if ($reference === '') {
+            $reference = $pathSelector['reference'] ?? '';
+        }
 
         try {
-            $version = $this->brains->getEntityVersion($project, $entity, $reference !== '' ? $reference : null);
+            $version = $this->brains->getEntityVersion($project, $entitySlug, $reference !== '' ? $reference : null);
 
             return CommandResponse::success('entity show', [
                 'project' => $project,
-                'entity' => $entity,
+                'entity' => $entitySlug,
+                'path' => $pathSelector['path'],
                 'version' => $version['version'] ?? null,
                 'record' => $version,
-            ], sprintf('Entity "%s" in project "%s".', $entity, $project));
+            ], sprintf('Entity "%s" in project "%s".', $entitySlug, $project));
         } catch (Throwable $exception) {
             $this->logger->error('Failed to show entity', [
                 'project' => $project,
@@ -358,16 +482,9 @@ final class EntityAgent
             return CommandResponse::error('entity save', 'Parameters "project" and "entity" are required.');
         }
 
-        $entityToken = $entityIdentifier;
-        $fieldsetToken = null;
-
-        if (str_contains($entityIdentifier, ':')) {
-            [$entityToken, $fieldsetToken] = explode(':', $entityIdentifier, 2);
-        }
-
-        $entitySelector = $this->parseSelector($entityToken, false);
-        $entity = $entitySelector['slug'];
-        $sourceReference = $entitySelector['reference'];
+        $pathSelector = $this->parsePathSelector($entityIdentifier, false);
+        $entity = $pathSelector['slug'];
+        $sourceReference = $pathSelector['reference'];
 
         if ($entity === null || $entity === '') {
             return CommandResponse::error('entity save', 'Entity slug cannot be empty.');
@@ -377,7 +494,8 @@ final class EntityAgent
         $fieldsetSlug = null;
         $fieldsetReference = null;
 
-        if ($fieldsetToken !== null) {
+        $fieldsetToken = $pathSelector['fieldset_token'];
+        if ($fieldsetToken !== null && $fieldsetToken !== '') {
             $fieldsetProvided = true;
             $inline = $this->parseSelector($fieldsetToken, true);
             $fieldsetSlug = $inline['slug'];
@@ -393,8 +511,16 @@ final class EntityAgent
         }
 
         $payload = $parameters['payload'] ?? null;
+        $hasParentChange = array_key_exists('parent', $parameters) || array_key_exists('parent_path', $parameters);
+        $forceMerge = false;
+
         if (!\is_array($payload)) {
-            return CommandResponse::error('entity save', 'JSON payload is required (object or array).');
+            if ($hasParentChange) {
+                $payload = [];
+                $forceMerge = true;
+            } else {
+                return CommandResponse::error('entity save', 'JSON payload is required (object or array).');
+            }
         }
 
         $meta = [];
@@ -431,6 +557,9 @@ final class EntityAgent
         }
 
         $mergeOption = $parameters['merge'] ?? $parameters['mode'] ?? null;
+        if ($forceMerge && $mergeOption === null) {
+            $mergeOption = 'merge';
+        }
 
         try {
             $options = [];
@@ -449,6 +578,12 @@ final class EntityAgent
 
             if ($mergeOption !== null) {
                 $options['merge'] = $mergeOption;
+            }
+
+            if ($pathSelector['path_provided']) {
+                $options['parent_path'] = $pathSelector['path'];
+            } elseif (array_key_exists('parent', $parameters)) {
+                $options['parent_path'] = $this->normalizeParentOption($parameters['parent']);
             }
 
             $commit = $this->brains->saveEntity($project, $entity, $payload, $meta, $options);
@@ -506,16 +641,32 @@ final class EntityAgent
             return CommandResponse::error('entity remove', 'No valid entities detected in selector.');
         }
 
+        $recursive = $this->toBool($parameters['recursive'] ?? false);
+
         try {
+            $warnings = [];
             $results = [];
             foreach (\array_keys($slugs) as $slug) {
-                $results[] = $this->brains->deactivateEntity($project, $slug);
+                $result = $this->brains->deactivateEntity($project, $slug, [
+                    'recursive' => $recursive,
+                ]);
+                if (isset($result['warnings']) && \is_array($result['warnings'])) {
+                    foreach ($result['warnings'] as $warning) {
+                        $warnings[] = (string) $warning;
+                    }
+                }
+                $results[] = $result;
+            }
+
+            $meta = [];
+            if ($warnings !== []) {
+                $meta['warnings'] = array_values(array_unique($warnings));
             }
 
             return CommandResponse::success('entity remove', [
                 'project' => $project,
                 'entities' => $results,
-            ], sprintf('Deactivated %d entit%s in project "%s".', \count($results), \count($results) === 1 ? 'y' : 'ies', $project));
+            ], sprintf('Deactivated %d entit%s in project "%s"%s.', \count($results), \count($results) === 1 ? 'y' : 'ies', $project, $recursive ? ' (including descendants)' : ''), $meta);
         } catch (Throwable $exception) {
             $this->logger->error('Failed to remove entity version', [
                 'project' => $project,
@@ -549,10 +700,14 @@ final class EntityAgent
             return CommandResponse::error('entity delete', 'No valid entity selectors supplied.');
         }
 
+        $recursive = $this->toBool($parameters['recursive'] ?? false);
+        $purgeCommits = $this->toBool($parameters['purge_commits'] ?? $parameters['purge'] ?? true);
+
         try {
             $deletedEntities = [];
             $deletedVersions = [];
             $entityLookup = [];
+            $warnings = [];
 
             foreach ($selectors as $selector) {
                 $slug = $selector['slug'];
@@ -571,12 +726,26 @@ final class EntityAgent
             }
 
             foreach (\array_keys($entityLookup) as $slug) {
-                $this->brains->deleteEntity($project, $slug, true);
+                $deleteResult = $this->brains->deleteEntity($project, $slug, $purgeCommits, [
+                    'recursive' => $recursive,
+                ]);
+                if (isset($deleteResult['warnings']) && \is_array($deleteResult['warnings'])) {
+                    foreach ($deleteResult['warnings'] as $warning) {
+                        $warnings[] = (string) $warning;
+                    }
+                }
                 $deletedEntities[] = [
                     'project' => $project,
                     'entity' => $slug,
                     'deleted' => true,
+                    'cascade' => $deleteResult['cascade'] ?? null,
+                    'warnings' => $deleteResult['warnings'] ?? [],
                 ];
+            }
+
+            $meta = [];
+            if ($warnings !== []) {
+                $meta['warnings'] = array_values(array_unique($warnings));
             }
 
             return CommandResponse::success('entity delete', [
@@ -584,13 +753,14 @@ final class EntityAgent
                 'entities' => $deletedEntities,
                 'versions' => $deletedVersions,
             ], sprintf(
-                'Deleted %d entit%s and %d version%s in project "%s".',
+                'Deleted %d entit%s and %d version%s in project "%s"%s.',
                 \count($deletedEntities),
                 \count($deletedEntities) === 1 ? 'y' : 'ies',
                 \count($deletedVersions),
                 \count($deletedVersions) === 1 ? '' : 's',
-                $project
-            ));
+                $project,
+                $recursive ? ' (including descendants)' : ''
+            ), $meta);
         } catch (Throwable $exception) {
             $this->logger->error('Failed to delete entity', [
                 'project' => $project,
@@ -610,8 +780,13 @@ final class EntityAgent
     private function entityRestoreCommand(array $parameters): CommandResponse
     {
         $project = $this->extractProject($parameters, 'entity restore');
-        $entity = $this->extractEntity($parameters, 'entity restore');
+        $entityInput = $this->extractEntity($parameters, 'entity restore');
+        $pathSelector = $entityInput !== null ? $this->parsePathSelector($entityInput, false) : ['slug' => null, 'reference' => null, 'path' => [], 'fieldset_token' => null];
+        $entity = $pathSelector['slug'];
         $reference = isset($parameters['reference']) ? (string) $parameters['reference'] : '';
+        if ($reference === '' && isset($pathSelector['reference'])) {
+            $reference = (string) $pathSelector['reference'];
+        }
 
         if ($project === null || $entity === null || $reference === '') {
             return CommandResponse::error('entity restore', 'Parameters "project", "entity", and a reference are required.');
@@ -682,7 +857,7 @@ final class EntityAgent
     }
 
     /**
-     * @return array{slug: ?string, reference: ?string}
+     * @return array<int, array{slug: ?string, reference: ?string, path: array<int,string>, path_provided: bool, fieldset_token: ?string}>
      */
     private function expandEntityInputs(mixed $value): array
     {
@@ -710,7 +885,7 @@ final class EntityAgent
                 continue;
             }
 
-            $selector = $this->parseSelector($trimmed, false);
+            $selector = $this->parsePathSelector($trimmed, false);
             if ($selector['slug'] === null || $selector['slug'] === '') {
                 continue;
             }
@@ -785,5 +960,63 @@ final class EntityAgent
             'slug' => $slug,
             'reference' => $reference,
         ];
+    }
+
+    /**
+     * @return array{slug: ?string, reference: ?string, path: array<int,string>, path_provided: bool, fieldset_token: ?string}
+     */
+    private function parsePathSelector(string $value, bool $allowEmptySlug): array
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            $selector = $this->parseSelector('', $allowEmptySlug);
+            return $selector + ['path' => [], 'path_provided' => false, 'fieldset_token' => null];
+        }
+
+        $segments = array_filter(array_map('trim', explode('/', $value)), static fn ($segment) => $segment !== '');
+        $last = array_pop($segments);
+        if ($last === null) {
+            $last = '';
+        }
+
+        $fieldsetToken = null;
+        if (str_contains($last, ':')) {
+            [$lastPart, $fieldsetToken] = explode(':', $last, 2);
+        } else {
+            $lastPart = $last;
+        }
+
+        $selector = $this->parseSelector($lastPart, $allowEmptySlug);
+
+        $normalizedPath = array_values(array_map(static fn ($segment) => strtolower(trim($segment)), $segments));
+
+        return [
+            'slug' => $selector['slug'],
+            'reference' => $selector['reference'],
+            'path' => $normalizedPath,
+            'path_provided' => $normalizedPath !== [],
+            'fieldset_token' => $fieldsetToken,
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int,string>
+     */
+    private function normalizeParentOption(mixed $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        if (is_array($value)) {
+            $value = implode('/', array_map('strval', $value));
+        }
+
+        $segments = array_map('trim', explode('/', (string) $value));
+        $segments = array_filter($segments, static fn ($segment) => $segment !== '');
+
+        return array_values(array_map(static fn ($segment) => strtolower($segment), $segments));
     }
 }

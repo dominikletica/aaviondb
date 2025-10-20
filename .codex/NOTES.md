@@ -17,8 +17,8 @@
 - **Shared tasks**: [ ] Standardise manifest/module scaffolding for remaining modules; [ ] emit diagnostics + logging hooks; [ ] add PHPUnit coverage once prototype stabilises.
 - **CoreAgent (`core`)**: [x] Implement `status`, `diagnose`, `help` with metadata.
 - **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [x] add compaction/repair utilities; [x] optional cleanup command for inactive versions (with dry-run).
-- **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [ ] cascade coordination with EntityAgent.
-- **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
+- **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [x] cascade coordination with EntityAgent; [x] project restore/unarchive command; [ ] extend restore with bulk reactivation controls as needed.
+- **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [x] cascade coordination with ProjectAgent; [x] hierarchy-aware listing; [x] hierarchy move command; [ ] hierarchy diagnostics (z. B. Move-Impact-Previews) pending.
 - **EntityAgent (`entity`)**: [x] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge); [x] allow schema selectors to target historical revisions (`fieldset@13` / `#hash`) and evaluate merges against non-active entity versions.
 - **ConfigAgent (`config`)**: [x] `set`/`get` commands for user/system config; [ ] advanced value typing + bulk import/export; [ ] audit trail integration.
 - **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [x] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
@@ -34,7 +34,7 @@
 
 ### Roadmap to Alpha (pre-tests)
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
-2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation.
+2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation. *(DONE – follow-up: refine restore/reactivation ergonomics and cascade diagnostics.)*
 3. **Configuration upgrades** – Add bulk import/export commands and config audit logging.
 4. **Export destinations & profiles** – Introduce preset destinations (disk/response), scheduler hooks, and schema-aware/LLM profiles.
 5. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
@@ -46,7 +46,7 @@
 11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs.
 12. **Testing plan** – Design and implement the PHPUnit coverage plan (execute after steps 1–11).
 13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/save/delete`) and link to ExportAgent.
-14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling.
+14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling. *(DONE – hierarchy map + docs shipped; follow-up: subtree move helpers & OpenAPI alignment.)*
 15. **Reference & query syntax** – Implement `[ref @project/entity/field]` resolution with round-trip-safe storage, fallback messages, and future `[query …]` filters (including recursive lookups).
 16. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
 
@@ -156,3 +156,13 @@
 - Delivered brain maintenance utilities: `brain cleanup` now supports dry-run previews with commit counts, new `brain compact` rebuilds commit indexes/orders, and `brain repair` realigns entity metadata; README + manuals + command references updated.
 - Added backup inventory/prune/restore support with optional gzip compression and updated CLI/REST documentation.
 - **Next:** move to Roadmap Step 2 (project/entity cascade hooks) after verifying maintenance commands in practice.
+
+## 2025-10-20 – Midday Session
+
+- Implemented hierarchy support for entities: slash-separated paths in `entity save` assign parents, `BrainRepository` maintains a per-project `hierarchy` map, and `hierarchy.max_depth` (configurable via `set`) guards recursion depth.
+- Extended `entity remove` / `entity delete` with `--recursive`, child promotion logic, and structured cascade metadata + warnings; `ProjectAgent` now archives entities automatically when a project is removed.
+- Surfaced hierarchy details (`parent`, `path`, `path_string`) in entity listings/reports and included cascade warnings in command responses/events.
+- Updated README, user manual, developer module docs, command reference, and class map to explain hierarchy usage, recursion flags, and the outstanding need for a `project restore` command.
+- Roadmap Step 2 and Step 14 marked complete (follow-up tasks captured); Module checklist now tracks open work for project restore/unarchive and hierarchy tooling helpers.
+- Added `project restore` with optional entity reactivation, plus hierarchy-aware filtering for `entity list`/`list entities`. Documentation + classmap/commands refreshed; TODOs now focus on subtree move helpers and advanced cascade refinements.
+- Implemented `entity move` (deterministic subtree relocation) und `entity save --parent` ohne Payload für Einzel-Reparenting. README, Manuals, Commands und Classmap aktualisiert; offen bleibt lediglich bessere Hierarchie-Diagnostik (z. B. Move-Impact-Previews).

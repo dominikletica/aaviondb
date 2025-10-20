@@ -48,6 +48,7 @@ final class ProjectAgent
         $this->registerProjectCreate();
         $this->registerProjectUpdate();
         $this->registerProjectRemove();
+        $this->registerProjectRestore();
         $this->registerProjectDelete();
         $this->registerProjectInfo();
     }
@@ -78,9 +79,13 @@ final class ProjectAgent
                 case 'archive':
                     $context->setAction('project remove');
                     break;
+                case 'restore':
+                case 'unarchive':
+                    $context->setAction('project restore');
+                    break;
                 case 'delete':
-                $context->setAction('project delete');
-                break;
+                    $context->setAction('project delete');
+                    break;
             case 'update':
                 $context->setAction('project update');
                 break;
@@ -197,6 +202,17 @@ final class ProjectAgent
             'description' => 'Archive a project (soft delete).',
             'group' => 'project',
             'usage' => 'project remove <slug>',
+        ]);
+    }
+
+    private function registerProjectRestore(): void
+    {
+        $this->context->commands()->register('project restore', function (array $parameters): CommandResponse {
+            return $this->projectRestoreCommand($parameters);
+        }, [
+            'description' => 'Restore an archived project.',
+            'group' => 'project',
+            'usage' => 'project restore <slug> [--reactivate=0|1]',
         ]);
     }
 
@@ -377,6 +393,46 @@ final class ProjectAgent
             ]);
 
             return CommandResponse::error('project remove', $exception->getMessage(), [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'type' => get_class($exception),
+                ],
+            ]);
+        }
+    }
+
+    private function projectRestoreCommand(array $parameters): CommandResponse
+    {
+        $slug = $this->extractSlug($parameters);
+        if ($slug === null) {
+            return CommandResponse::error('project restore', 'Parameter "slug" is required.');
+        }
+
+        $reactivate = $this->toBool($parameters['reactivate'] ?? $parameters['reactivate_entities'] ?? false);
+
+        try {
+            $result = $this->brains->restoreProject($slug, [
+                'reactivate_entities' => $reactivate,
+            ]);
+
+            $warnings = $result['warnings'] ?? [];
+            $meta = [];
+            if (\is_array($warnings) && $warnings !== []) {
+                $meta['warnings'] = $warnings;
+            }
+
+            return CommandResponse::success('project restore', $result, sprintf(
+                'Project "%s" restored%s.',
+                $slug,
+                $reactivate ? ' (entities reactivated where possible)' : ''
+            ), $meta);
+        } catch (Throwable $exception) {
+            $this->logger->error('Failed to restore project', [
+                'slug' => $slug,
+                'exception' => $exception,
+            ]);
+
+            return CommandResponse::error('project restore', $exception->getMessage(), [
                 'exception' => [
                     'message' => $exception->getMessage(),
                     'type' => get_class($exception),

@@ -44,6 +44,43 @@ php cli.php 'save storyverse hero:character {"name":"Aria","role":"Pilot"}'
 
 ---
 
+## Organise Entities into Hierarchies
+
+Use slash-separated paths to nest entities under parents:
+
+```bash
+php cli.php 'save storyverse characters/hero {"name":"Aria","role":"Pilot"}'
+```
+
+- The last segment (`hero`) becomes the entity slug.  
+- The preceding segments (`characters`) define the parent chain.  
+- Parents must already exist. Missing segments are skipped and surfaced as warnings in the response. The entity is placed at the deepest valid level (the root if no parent can be resolved).  
+- To reassign an entity without changing the slug, provide a `parent` option:  
+  `php cli.php 'save storyverse hero {"role":"Ace"} parent=characters/veterans'`
+- You can omit the payload when only moving the entity: `php cli.php 'save storyverse hero --parent=characters/veterans'` (internally merges with the existing payload).
+- The maximum depth defaults to 10 segments. Adjust via `set hierarchy.max_depth 5`.
+
+---
+
+## List Children Within a Parent
+
+```bash
+php cli.php "entity list storyverse characters/heroes"
+```
+
+- Returns only the entities that live under `characters/heroes`.
+- Omit the path to list everything, or pass `/` (empty path) to list only root-level entities.
+- Add `with_versions=1` to include the version list for each entity.
+
+REST example:
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://example.test/api.php?action=entity%20list&project=storyverse&parent=characters/heroes"
+```
+
+---
+
 ## Show an Entity
 
 ```bash
@@ -71,11 +108,13 @@ Creates a new active version with the data from `@2`.
 
 ## Remove or Delete Entities
 
-- `remove <project> <entity>` – Deactivate the entity without deleting history.
-- `delete <project> <entity>` – Delete the entity and all versions.
-- `delete <project> <entity@version>` – Delete only the selected version.
+- `remove <project> <entity-path[,entity2]> [--recursive=0|1]` – Deactivate entities while keeping history. Without `--recursive=1`, direct children are promoted to the root level and a warning is returned. Use `--recursive=1` to archive the entire subtree.
+- `delete <project> <entity-path[,entity2]> [--recursive=0|1]` – Permanently delete entities. Missing `--recursive=1` promotes children before deleting the parent; `--recursive=1` removes every descendant and their commits.  
+- `delete <project> <entity@version>` – Delete only the selected version or commit hash.
 
 Each command accepts comma-separated lists for bulk actions.
+
+The command response contains `warnings` and `cascade` details so you can review which children were promoted or purged.
 
 ---
 
@@ -105,6 +144,23 @@ curl -H "Authorization: Bearer <token>" \
 $response = AavionDB::command('save storyverse hero', [
     'payload' => ['name' => 'Aria', 'role' => 'Pilot'],
 ]);
+```
+
+## Move an Entire Subtree
+
+```bash
+php cli.php "entity move storyverse characters/heroes/alpha characters/veterans"
+```
+
+- Moves `alpha` (and all of its descendants) under `characters/veterans`.
+- Use `/` or an empty string as the target path to move an entity back to the root: `entity move storyverse characters/heroes/alpha /`.
+- Optional `--mode=replace` is reserved for future conflict-handling and currently behaves like `merge`.
+
+REST:
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://example.test/api.php?action=entity%20move&project=storyverse&entity=characters/heroes/alpha&target=characters/veterans"
 ```
 
 ---

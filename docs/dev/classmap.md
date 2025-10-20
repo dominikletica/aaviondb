@@ -303,16 +303,17 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
         - activeBrain(): ?string
         - archiveEntity(string $projectSlug, string $entitySlug): array
         - archiveProject(string $projectSlug): array
+        - restoreProject(string $projectSlug, array $options = []): array
         - authDiagnostics(): array
         - backupBrain(?string $slug = null, ?string $label = null): array
         - brainReport(?string $slug = null): array
         - createBrain(string $slug, bool $activate = false): array
         - createProject(string $projectSlug, ?string $title = null, ?string $description = null): array
         - createSchedulerTask(string $slug, string $command): array
-        - deactivateEntity(string $projectSlug, string $entitySlug): array
+        - deactivateEntity(string $projectSlug, string $entitySlug, array $options = []): array
         - deleteBrain(string $slug): array
         - deleteConfigValue(string $key, bool $system = false): void
-        - deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true): void
+        - deleteEntity(string $projectSlug, string $entitySlug, bool $purgeCommits = true, array $options = []): array
         - deleteEntityVersion(string $projectSlug, string $entitySlug, string $reference): array
         - deleteProject(string $projectSlug, bool $purgeCommits = true): void
         - deleteSchedulerTask(string $slug): void
@@ -329,14 +330,15 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
         - listAuthTokens(bool $includeRevoked = true): array
         - listBrains(): array
         - listConfig(bool $system = false): array
-        - listEntities(string $projectSlug): array
+        - listEntities(string $projectSlug, ?array $pathSegments = null): array
         - listEntityVersions(string $projectSlug, string $entitySlug): array
+        - moveEntity(string $projectSlug, string $entitySlug, array $currentParentPath, array $targetParentPath, array $options = []): array
         - listProjectCommits(string $projectSlug, ?string $entitySlug = null): array
         - listProjects(): array
         - listSchedulerLog(int $limit = 20): array
         - listSchedulerTasks(): array
         - projectReport(string $projectSlug, bool $includeEntities = true): array
-        - purgeInactiveEntityVersions(string $projectSlug, ?string $entitySlug = null, int $keep = 0): array
+        - purgeInactiveEntityVersions(string $projectSlug, ?string $entitySlug = null, int $keep = 0, bool $dryRun = false): array
         - recordSchedulerRun(array $results, int $durationMs, int $maxEntries = 100): array
         - registerAuthToken(string $token, array $metadata = []): array
         - resetAuthTokens(): array

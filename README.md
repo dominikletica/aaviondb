@@ -39,13 +39,14 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | Command | Description |
 |----------|-------------|
 | `list projects` / `project list` | List all projects in the active brain. |
-| `list entities <project>` / `entity list <project>` | List entities belonging to a project. |
+| `list entities <project> [parent/path]` / `entity list <project> [parent/path]` | List entities belonging to a project. Provide a hierarchy path to scope results (e.g. `characters/heroes`). |
 | `list versions <project> <entity>` / `entity versions <project> <entity>` | Enumerate versions for an entity. |
 | `list commits <project> [entity] [limit=50]` / `project commits …` | Show recent commits (optionally filtered by entity). |
 | `show <project> <entity[@version or #commit]>` / `entity show …` | Render the active or selected entity version as JSON. |
-| `save <project> <entity[@version or #commit][:fieldset[@version or #commit]]> {payload}` / `entity save …` | Create or merge a new entity version (supports partial payload updates and schema selectors). |
-| `remove <project> <entity[,entity2]>` / `entity remove …` | Deactivate the active version(s) without purging history. |
-| `delete <project> <entity[,entity2]>` / `entity delete …` | Permanently delete entities (all versions and commits). |
+| `save <project> <entity-path[@version or #commit][:fieldset[@version or #commit]]> {payload}` / `entity save …` | Create or merge a new entity version. Use slash paths (`parent/child`) to assign hierarchy, bind schemas, or reposition an entity via `--parent` (payload optional when only moving). |
+| `move <project> <source-path> <target-path> [--mode=merge|replace]` / `entity move …` | Reassign an entity (including its subtree) to a new parent path without touching payloads. |
+| `remove <project> <entity-path[,entity2]> [--recursive=0|1]` / `entity remove …` | Deactivate entities. Default promotes child entities to the root; `--recursive=1` archives the entire subtree. Warnings surface when children are moved. |
+| `delete <project> <entity-path[,entity2]> [--recursive=0|1]` / `entity delete …` | Permanently delete entities. Default promotes children before deleting the parent; `--recursive=1` purges descendants and their commits. Target specific versions with selectors (`entity@7`, `entity#hash`). |
 | `delete <project> <entity@version[,entity2#commit]>` | Remove specific versions or commits without deleting the entity. |
 | `restore <project> <entity> <@version or #commit>` / `entity restore …` | Reactivate an archived version. |
 
@@ -54,7 +55,8 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 |----------|-------------|
 | `project create <slug> [title="..."] [description="..."]` | Create a project with optional metadata. |
 | `project update <slug> [title="..."] [description="..."]` | Update project title/description. |
-| `project remove <slug>` | Archive (soft delete) a project. |
+| `project remove <slug>` | Archive (soft delete) a project (deactivates entities automatically). |
+| `project restore <slug> [--reactivate=0|1]` | Restore an archived project; optionally reactivate entities/versions in-place. |
 | `project delete <slug> [purge_commits=1]` | Permanently delete a project (optionally purge commit history). |
 | `project info <slug>` | Display project summary and statistics. |
 

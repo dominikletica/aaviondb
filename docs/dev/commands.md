@@ -39,11 +39,12 @@ Quick overview of the currently available CLI commands, including aliases, usage
 - `delete` – Alias for entity deletion (`delete <project> <entity[@version|#commit][,...]>`).
 - `diagnose` – Emit diagnostic snapshot (`diagnose`).
 - `entity`
-    - `delete` – Delete entities or targeted versions (`entity delete <project> <entity[@version|#commit][,...]>`).
-    - `list` – List entities of a project (`entity list <project> [with_versions=1]`).
-    - `remove` – Deactivate active versions (`entity remove <project> <entity[,entity2]>`).
+    - `delete` – Delete entities or targeted versions (`entity delete <project> <entity-path[@version|#commit][,...]> [--recursive=0|1] [--purge_commits=0|1]`).
+    - `list` – List entities of a project (`entity list <project> [parent/path] [with_versions=1]`).
+    - `move` – Reassign hierarchy for an entity and its descendants (`entity move <project> <source-path> <target-path> [--mode=merge|replace]`).
+    - `remove` – Deactivate active versions (`entity remove <project> <entity-path[,entity2]> [--recursive=0|1]`).
     - `restore` – Restore a specific version (`entity restore <project> <entity> <@version|#commit>`).
-    - `save` – Persist a (possibly merged) payload (`entity save <project> <entity[@version|#commit][:fieldset[@version|#commit]]> {json}`).
+    - `save` – Persist a (possibly merged) payload or reparent an entity (`entity save <project> <entity-path[@version|#commit][:fieldset[@version|#commit]]> {json} [--parent=path]`).
     - `show` – Show the active or selected version (`entity show <project> <entity> [@version|#commit]`).
     - `versions` – List versions for an entity (`entity versions <project> <entity>`).
 - `export` – Generate export bundles (`export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="..."] [usage="..."] [preset]`).
@@ -51,7 +52,7 @@ Quick overview of the currently available CLI commands, including aliases, usage
 - `help` – List commands or show details (`help [command=name]`).
 - `list`
     - `commits` – Alias to list project/entity commits (`list commits <project> [entity] [limit=50]`).
-    - `entities` – Alias to list entities (`list entities <project>`).
+    - `entities` – Alias to list entities (`list entities <project> [parent/path]`).
     - `projects` – Alias to list projects (`list projects`).
     - `versions` – Alias to list versions (`list versions <project> <entity>`).
 - `log` – Tail framework logs (`log [level=ERROR|AUTH|DEBUG|ALL] [limit=10]`).
@@ -66,6 +67,7 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `info` – Display project summary (`project info <slug>`).
     - `list` – Alias to list projects (`project list`).
     - `remove` – Archive a project (`project remove <slug>`).
+    - `restore` – Reactivate an archived project (`project restore <slug> [--reactivate=0|1]`).
     - `update` – Update metadata (`project update <slug> [title="..."] [description="..."]`).
 - `remove` – Alias for entity removal.
 - `restore` – Alias for entity restore.
