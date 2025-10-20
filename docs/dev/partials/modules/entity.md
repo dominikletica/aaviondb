@@ -17,6 +17,24 @@
 - `delete <project> <entity@version[,entity2#commit]>` – Targeted deletion of specific versions/commits without removing the full entity.
 - `restore <project> <entity@version|entity#commit>` ↔ `entity restore …` – Reactivate a specific revision and mark it as active.
 
+## Call Flow
+- `system/modules/entity/module.php` instantiates `AavionDB\Modules\Entity\EntityAgent` and calls `register()`.  
+- `EntityAgent::registerParser()` plus shortcut handlers in CoreAgent convert top-level verbs (`save`, `show`, `list versions`, `remove`, `delete`) into canonical actions while extracting `project`, `entity`, selectors, and schema references.  
+- Command handlers map directly to repository operations:  
+  - `entityListCommand()` → `BrainRepository::listEntities()` / `listEntityVersions()`  
+  - `entityShowCommand()` → `BrainRepository::getEntityVersion()`  
+  - `entitySaveCommand()` → orchestrates merge selection via `BrainRepository::resolveEntityMergeSource()` (internally) and persists through `saveEntity()` with schema validation.  
+  - `entityRemoveCommand()` / `entityDeleteCommand()` / `entityDeleteVersionCommand()` → `deactivateEntity()`, `deleteEntity()`, `deleteEntityVersion()`  
+  - `entityRestoreCommand()` → `restoreEntityVersion()`  
+- Schema hooks call `SchemaValidator::applySchema()` after merging payloads; debug detail is emitted through `ModuleContext::debug()` when the `--debug` flag is set.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Entity\EntityAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – entity persistence, merge resolution, version metadata.  
+- `AavionDB\Schema\SchemaValidator` – validates and enriches payloads based on attached fieldsets.  
+- `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, cache/security helpers as needed.  
+- `AavionDB\Core\CommandResponse` – shared response envelope.
+
 ## Implementation Notes
 - Module lives in `system/modules/entity` and depends on BrainRepository helpers (`listEntities`, `listEntityVersions`, `saveEntity`, `deactivateEntity`, `deleteEntity`, `deleteEntityVersion`, `restoreEntityVersion`, `purgeInactiveEntityVersions`, `entityReport`).
 - Parser supports natural CLI syntax as well as top-level shortcuts (`save`, `show`, `list versions`, `remove`, `delete`); inline schema selectors (`entity save demo user:profile`) automatically populate the `fieldset` option.

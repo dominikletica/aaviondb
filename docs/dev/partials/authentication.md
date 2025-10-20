@@ -1,7 +1,7 @@
-# Authentication & API Keys (DRAFT)
+# Authentication & API Keys
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained  
+> **Last updated:** 2025-10-20
 
 ## Admin Secret
 - Configured via `config.php` (`admin_secret`). Must start with `_` and be at least 8 characters. Empty string disables it.  
@@ -26,12 +26,12 @@
 - Clients must supply `Authorization: Bearer <token>`; fallbacks (`X-API-Key`, `token`/`api_key` query/body parameters) exist for tooling convenience.
 
 ## Lifecycle Commands
-- `auth grant` (planned implementation) will mint a new token (default 16 chars; configurable via `api_key_length`), persist its hash, and return handling guidance.  
-- `auth list` will expose masked tokens, status flags, and audit timestamps.  
-- `auth revoke {key}` will deactivate a token; if no active keys remain, `api.enabled` is forced off and `bootstrap_active` resets.  
-- `auth reset` will reset all tokens, disable REST, and re-enable the bootstrap key for recovery.
+- `auth grant [label][projects=...]` mints a new token (default 32 characters), persists the hash, and returns a preview.  
+- `auth list` exposes masked tokens, metadata (label, projects scope, created_at, last_used_at), and status flags.  
+- `auth revoke <token|preview>` deactivates a token; if no active keys remain, `api.enabled` is forced off and `bootstrap_active` resets.  
+- `auth reset` removes all tokens, disables REST, reactivates the bootstrap key, and logs the event.
 
 ## Logging & Recovery
-- Auth events will be forwarded to the upcoming logging module (view/rotate/cleanup commands).  
-- If a token is lost, operators can use CLI (`auth grant`, `auth reset`) or inspect the system log once implemented.  
+- Auth events are written to the main log with `source=auth`.  
+- If a token is lost, operators can use CLI (`auth grant`, `auth reset`) or inspect logs via `log AUTH`.  
 - UI should prompt operators to replace the bootstrap key immediately after the first login.

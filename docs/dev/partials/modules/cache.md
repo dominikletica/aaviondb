@@ -13,6 +13,18 @@
 - `cache ttl <seconds>` – Update the default TTL; values ≤ 0 are rejected.
 - `cache purge [key=...] [tag=a,b]` – Remove cached artefacts. Without parameters everything is flushed; `key` targets a specific entry; `tag` accepts a comma-separated list of tags.
 
+## Call Flow
+- `system/modules/cache/module.php` instantiates `AavionDB\Modules\Cache\CacheAgent` and calls `register()`.  
+- `CacheAgent::registerParser()` converts `cache ...` statements into a single `cache` command with a `subcommand` parameter (`status`, `enable`, `disable`, `ttl`, `purge`) and extracts flags like `key=` or `tag=`.  
+- `CacheAgent::handleCacheCommand()` routes to dedicated methods: `statusCommand()`, `toggleCommand()`, `ttlCommand()`, `purgeCommand()`.  
+- `CacheManager` (via `ModuleContext::cache()`) performs file system operations: `cleanupExpired()`, `statistics()`, `setEnabled()`, `setTtl()`, `purgeByKey()`, and tag-filtered deletions.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Cache\CacheAgent` – parser + command registrar.  
+- `AavionDB\Core\Cache\CacheManager` – JSON-file cache store under `user/cache/`.  
+- `AavionDB\Core\Modules\ModuleContext` – provides cache service, command registry, and debug logger.  
+- `AavionDB\Core\CommandResponse` – wraps results for CLI/REST/PHP parity.
+
 ## Implementation Notes
 - Module lives in `system/modules/cache` and requires `cache.manage`, `commands.register`, `parser.extend`, and `logger.use` capabilities.
 - The cache store is managed by `AavionDB\Core\Cache\CacheManager` using JSON files under `user/cache/`.

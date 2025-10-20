@@ -13,6 +13,23 @@
 - `export * [description="..."]` – Bundles every accessible project into a single response; selectors are not permitted in wildcard mode.  
 - Optional `description` parameters populate `export_meta.description`, while `usage` (when provided) overrides the guide’s usage text (otherwise it falls back to the description).
 
+## Call Flow
+- `system/modules/export/module.php` instantiates `AavionDB\Modules\Export\ExportAgent` and invokes `register()`.  
+- `ExportAgent::registerParser()` normalises CLI statements, extracting the project target (`*`, CSV, or preset reference) and free-form selectors into a `selectors` parameter before dispatch.  
+- `ExportAgent::exportCommand()` orchestrates the export:  
+  - Validates project targets (`normaliseProjectTargets()`), selectors (`parseSelectors()`), and preset usage (`loadPreset()`, `selectorsFromPreset()`).  
+  - Builds project payloads via `buildProjectExport()` / `buildEntityExport()` / `buildVersionRecord()` using `BrainRepository::projectReport()`, `getEntityVersion()`, and version summaries.  
+  - Applies optional payload filters (`preparePayloadFilter()`) and transforms (`prepareTransform()`) before packaging the response.  
+  - Computes hashes using `CanonicalJson::hash()` and writes optional artefacts under `user/exports/` when presets request persistence.  
+- Debug output traces selection, filter, and transform stages via `ModuleContext::debug()` when `--debug` is present.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Export\ExportAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – project/entity/version lookup and metadata aggregation.  
+- `AavionDB\Core\Hashing\CanonicalJson` – deterministic hashing for exported payloads.  
+- `AavionDB\Core\Filesystem\PathLocator` – resolves preset and export directories under `user/presets/export/` and `user/exports/`.  
+- `AavionDB\Core\Modules\ModuleContext` – provides repository/logger/path services and debug logging.  
+- Preset configuration files (JSON) cached via `ExportAgent::$presetCache` to reduce I/O.
 ### Response Shape (Project Slice)
 ```json
 {

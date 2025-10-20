@@ -13,6 +13,21 @@
 - `log rotate [keep=10]` – Rotate the active log file into `aaviondb-YYYYmmdd_HHMMSS.log` and optionally keep only the newest `keep` archives (default 10, `0` removes all archives).
 - `log cleanup [keep=10]` – Delete archived log files beyond the supplied retention threshold without rotating the active file.
 
+## Call Flow
+- `system/modules/log/module.php` instantiates `AavionDB\Modules\Log\LogAgent` and invokes `register()`.  
+- `LogAgent::registerParser()` transforms the single `log` verb into subcommands (`view`, `rotate`, `cleanup`) and parses inline arguments (`level`, `limit`, `keep`).  
+- Command handlers:  
+  - `logCommand()` reads `aaviondb.log`, parses Monolog lines via `readLogEntries()`, applies level filtering, and returns structured entries.  
+  - `rotateCommand()` renames the active log (`rotateLogFile()`), creates a fresh file, and prunes archives to the `keep` threshold.  
+  - `cleanupCommand()` enumerates archives via `PathLocator::systemLogs()` and deletes older files.  
+- Debug logging indicates when rotation or cleanup touches files; warnings are emitted on read/write failures.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Log\LogAgent` – parser + command registrar.  
+- `AavionDB\Core\Filesystem\PathLocator` – resolves `system/storage/logs/` directories.  
+- `AavionDB\Core\Modules\ModuleContext` – supplies command registry and module-scoped logger.  
+- `AavionDB\Core\CommandResponse` – unified response envelope for CLI/REST/PHP.
+
 ## Implementation Notes
 - Module lives in `system/modules/log`; manifest enables `paths.read` and `logger.use` capabilities.
 - Reads from `system/storage/logs/aaviondb.log` (path configurable via `log_path`).

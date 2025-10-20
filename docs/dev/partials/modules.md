@@ -1,7 +1,7 @@
-# Modules & Autoloading (DRAFT)
+# Modules & Autoloading
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained  
+> **Last updated:** 2025-10-20
 
 ## Discovery
 - `ModuleLoader` scans `system/modules/*` (system scope) and `user/modules/*` (user scope).  
@@ -190,7 +190,7 @@ return [
 
 > Implementation TODOs are tracked centrally in `.codex/NOTES.md`.
 
-### Module Documentation Stubs
+### Module Documentation Index
 - [`modules/core.md`](./modules/core.md) – CoreAgent details
 - [`modules/brain.md`](./modules/brain.md) – BrainAgent
 - [`modules/project.md`](./modules/project.md) – ProjectAgent

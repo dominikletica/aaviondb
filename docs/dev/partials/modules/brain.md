@@ -17,6 +17,19 @@
 - `brain delete <slug>` – Permanently delete a non-active user brain.
 - `brain cleanup <project> [entity] [keep=0]` – Purge inactive versions for the given project (optional entity scope, preserve the most recent `keep` versions).
 
+## Call Flow
+- `system/modules/brain/module.php` constructs `AavionDB\Modules\Brain\BrainAgent` and calls `BrainAgent::register()`.  
+- `BrainAgent::registerParser()` rewrites statements like `brain init foo` or bare `brains` into canonical command names and merges parameters before dispatch.  
+- Each command maps to a dedicated method: `brainInitCommand()`, `brainSwitchCommand()`, `brainBackupCommand()`, `brainInfoCommand()`, `brainValidateCommand()`, `brainDeleteCommand()`, and `brainCleanupCommand()`. All return `CommandResponse` objects.  
+- The handlers delegate to `BrainRepository` operations (`createBrain`, `setActiveBrain`, `backupBrain`, `brainReport`, `integrityReportFor`, `deleteBrain`, `purgeInactiveEntityVersions`) and emit debug logs via `ModuleContext::debug()` for troubleshooting.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Brain\BrainAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – performs actual filesystem mutations and reporting.  
+- `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, diagnostics hooks.  
+- `AavionDB\Core\CommandResponse` – wraps every handler result in the unified schema.  
+- `PathLocator` – ensures backup directories exist (invoked inside repository helpers).
+
 ## Implementation Notes
 - Module lives in `system/modules/brain` and leverages helpers in `BrainRepository` (`listBrains`, `createBrain`, `setActiveBrain`, `backupBrain`, `deleteBrain`, `brainReport`, `integrityReportFor`, `purgeInactiveEntityVersions`). The cleanup command now honours a `keep` threshold to retain the most recent versions.
 

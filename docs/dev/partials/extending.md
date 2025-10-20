@@ -1,7 +1,7 @@
-# Extending AavionDB (DRAFT)
+# Extending AavionDB
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained  
+> **Last updated:** 2025-10-20
 
 1. Create `user/modules/MyModule/module.php` (+ optional `manifest.json`).  
 2. Register commands via the provided `CommandRegistry`/`EventBus` dependencies in `init()`.  
@@ -12,5 +12,6 @@
 Guidelines:
 - Keep modules focused and composable; avoid cross-cutting state mutations outside of events/commands.  
 - Always return `CommandResponse`-compatible arrays (`status`, `message`, `data`, `meta`).  
-- Log errors rather than throwing, unless interacting with low-level storage APIs (caller must handle).  
-- Update documentation and changelog when introducing new commands or behaviours.
+- Log errors rather than throwing, unless interacting with low-level storage or security APIs (caller must handle).  
+- Document new commands in `docs/dev/commands.md` and surface user-facing behaviour in the user manual.  
+- Update `.codex/NOTES.md` with TODOs and roadmap entries for larger additions.

@@ -15,6 +15,25 @@
 - `scheduler log [limit=20]` – Displays recent cron runs (timestamp, duration, per-task result snapshot).
 - `cron` – Executes all tasks sequentially, logging outcome for each command.
 
+## Call Flow
+- `system/modules/scheduler/module.php` instantiates `AavionDB\Modules\Scheduler\SchedulerAgent` and calls `register()`.  
+- `SchedulerAgent::registerParser()` handles both `scheduler ...` and the standalone `cron` verb, parsing task slugs/commands and merging optional parameters.  
+- Command handlers map to repository calls:  
+  - `schedulerAddCommand()` → `BrainRepository::createSchedulerTask()`  
+  - `schedulerEditCommand()` → `updateSchedulerTask()`  
+  - `schedulerRemoveCommand()` → `deleteSchedulerTask()`  
+  - `schedulerListCommand()` → `listSchedulerTasks()`  
+  - `schedulerLogCommand()` → `listSchedulerLog()` (with optional limit).  
+  - `cronCommand()` → iterates stored tasks, calls `AavionDB::command()` for each, records run metadata via `recordSchedulerRun()` / `updateSchedulerTaskRun()`, and assembles the response.  
+- `cronCommand()` skips authentication in REST (`api.php` short-circuits on `action=cron`) and logs per-task success/failure using the module logger.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Scheduler\SchedulerAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – persistence and logging for scheduler tasks.  
+- `AavionDB\AavionDB` facade – executes stored commands during cron runs.  
+- `AavionDB\Core\Modules\ModuleContext` – provides command registry, logger, and repository access.  
+- `AavionDB\Core\CommandResponse` – response envelope shared across commands and cron execution.
+
 ## Implementation Notes
 - Module lives in `system/modules/scheduler`. Scheduler data is stored in the system brain (`scheduler.tasks`, `scheduler.log`).
 - `BrainRepository` helpers ensure atomic updates (`createSchedulerTask`, `updateSchedulerTask`, `deleteSchedulerTask`, `listSchedulerTasks`, `recordSchedulerRun`, `updateSchedulerTaskRun`, `listSchedulerLog`).

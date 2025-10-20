@@ -1,7 +1,7 @@
-# UI & Web Console (DRAFT)
+# UI & Web Console
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained – awaiting AavionStudio implementation  
+> **Last updated:** 2025-10-20
 
 ## Planned Features
 - External **AavionStudio** app providing interactive console, dashboards, and diff views.  

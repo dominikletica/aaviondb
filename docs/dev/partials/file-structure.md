@@ -1,7 +1,7 @@
-# File Structure (DRAFT)
+# File Structure
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained  
+> **Last updated:** 2025-10-20
 
 ```
 aavionDB/
@@ -14,17 +14,28 @@ aavionDB/
 │   ├── templates/               # Shared templates/snippets (optional)
 │   └── storage/
 │       ├── system.brain         # Internal system brain (JSON)
-│       └── logs/                # Monolog output (aaviondb.log, auth.log,…)
+│       └── logs/                # Monolog output (aaviondb.log, auth.log, rotated archives)
 ├── user/
 │   ├── modules/                 # User-defined modules
 │   ├── storage/                 # User brains (JSON)
-│   ├── exports/                 # Generated exports for LLMs
-│   └── cache/                   # Temporary runtime/cache data
-├── docs/                        # Documentation (`README.md`, manual, specs)
+│   ├── presets/
+│   │   └── export/              # Export preset definitions (JSON)
+│   ├── cache/                   # Cached artefacts (tagged, TTL-governed)
+│   ├── exports/                 # Generated exports (optional persisted copies)
+│   └── backups/                 # Brain backups created via `brain backup`
+├── docs/
+│   ├── user/                    # User-facing handbook (simple language, workflows)
+│   └── dev/                     # Developer reference (partials, class maps)
+├── .codex/
+│   ├── AGENTS.md                # Collaboration guidelines and reminder checklist
+│   └── NOTES.md                 # Session log + TODO overview
 ├── config.example.php           # Configuration template (copy to config.php)
+├── config.php                   # Optional runtime overrides (ignored by VCS)
 ├── api.php                      # REST/PHP entry point
 ├── cli.php                      # CLI entry point
+├── aaviondb.php                 # PHP entry point for embedded integrations
+├── CHANGELOG.md                 # Release notes
 └── README.md                    # Project overview
 ```
 
-`PathLocator` ensures these directories exist during bootstrap. Adjust `.gitignore` as new runtime folders are introduced (e.g., log rotation directories, temporary exports).
+`PathLocator` ensures these directories exist during bootstrap. Adjust `.gitignore` when introducing new runtime folders (e.g., log archives, cache tags, export presets). Keep directories under version control when they hold documentation or templates; runtime artefacts (cache, exports, backups) stay excluded.

@@ -14,6 +14,22 @@
 - `api status` – Returns the current REST status (`enabled`, `active_tokens`, bootstrap flag, last request/enabled/disabled timestamps, last actor).
 - `api reset` – Invokes `BrainRepository::resetAuthTokens()`, revoking all tokens and disabling REST in a single step; returns revocation count and `api_enabled=false`.
 
+## Call Flow
+- `system/modules/api/module.php` instantiates `AavionDB\Modules\Api\ApiAgent` and calls `register()`.  
+- `ApiAgent::registerParser()` maps `api` verbs to canonical actions and captures optional `reason=` flags.  
+- Command handlers:  
+  - `apiServeCommand()` → loads auth state via `BrainRepository::systemAuthState()`, ensures active keys exist, then invokes `setApiEnabled(true, metadata)` to flip the flag.  
+  - `apiStopCommand()` → mirrors serve but disables REST via `setApiEnabled(false, metadata)` and logs the transition.  
+  - `apiStatusCommand()` → queries `systemAuthState()` and returns a telemetry snapshot (enabled flag, counts, timestamps).  
+  - `apiResetCommand()` → wraps `resetAuthTokens()` to revoke keys, disables REST, and reports how many tokens were removed.  
+- All handlers write to the shared logger with `source=api` and emit debug information when requested.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Api\ApiAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – persistence for REST enablement, auth state, and metadata.  
+- `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, and diagnostics.  
+- `AavionDB\Core\CommandResponse` – unified response object consumed by CLI/REST/PHP routes.
+
 ## Implementation Notes
 - Module files live in `system/modules/api`; classes autoload from `classes/`.
 - Uses `BrainRepository::systemAuthState()` for readiness checks and telemetry, and `setApiEnabled()` to toggle availability.

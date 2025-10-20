@@ -14,6 +14,23 @@
 - `auth revoke <token|hash>` – Revokes a specific token (plain token or SHA-256 hash).
 - `auth reset` – Revokes all tokens, re-enables bootstrap mode, and disables the REST API.
 
+## Call Flow
+- `system/modules/auth/module.php` instantiates `AavionDB\Modules\Auth\AuthAgent` and calls `register()`.  
+- `AuthAgent::registerParser()` standardises `auth ...` verbs and extracts parameters (`scope`, `projects`, `label`, `identifier`).  
+- Command handlers:  
+  - `authGrantCommand()` → sanitises scope/projects, generates a token via `BrainRepository::registerAuthToken()`, persists REST enablement (`setApiEnabled(true)`), and returns the plain token (only once).  
+  - `authListCommand()` → calls `BrainRepository::listAuthTokens()` and masks token previews in-place.  
+  - `authRevokeCommand()` → resolves token/preview to the stored hash and invokes `BrainRepository::revokeAuthToken()`; disables REST if no active tokens remain.  
+  - `authResetCommand()` → wraps `BrainRepository::resetAuthTokens()` and toggles `api.enabled` back to `false` while reactivating the bootstrap key.  
+- Each handler logs via `ModuleContext::logger()` (`source=auth`) and emits debug state when requested.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Auth\AuthAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – token storage, scope enforcement, REST enablement.  
+- `AavionDB\Core\Security\AuthManager` – consumed downstream (API guard) using state generated here.  
+- `AavionDB\Core\Modules\ModuleContext` – provides command registry, logger, and container access (`config`).  
+- `AavionDB\Core\CommandResponse` – unified response wrapper.
+
 ## Scope Semantics
 - `ALL` – Full read/write access to every project. Project filters are ignored.
 - `RW` – Read/write access limited to the declared projects (or all when `*` is used).

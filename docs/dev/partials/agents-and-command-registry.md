@@ -1,7 +1,7 @@
-# Agents & Command Registry (DRAFT)
+# Agents & Command Registry
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained  
+> **Last updated:** 2025-10-20
 
 ## Agents
 - Agents encapsulate cohesive command sets (core, brain, entity, project, export, auth, api, ui, log…).  
@@ -26,4 +26,5 @@
 ## Future Work
 - Permissions per command (role/key-based).  
 - Structured metadata for auto-generated docs/help.  
-- Batch/transaction support for grouped commands.
+- Batch/transaction support for grouped commands.  
+- Passive command profiling hooks for performance tuning.

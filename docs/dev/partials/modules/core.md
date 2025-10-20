@@ -15,6 +15,18 @@
 - `help [command=name]`  
   Lists all registered commands (sorted) or shows detailed metadata for a specific command.
 
+## Call Flow
+- `system/modules/core/module.php` instantiates `AavionDB\Modules\Core\CoreAgent` and calls `CoreAgent::register()`.  
+- `CoreAgent::registerGlobalParsers()` injects the global `--debug` flag, while `registerShortcutParsers()` rewrites top-level verbs (`list`, `save`, `show`, `remove`, `delete`) to the responsible agents before the command parser runs.  
+- Command handlers live in `CoreAgent::registerStatusCommand()`, `registerDiagnoseCommand()`, and `registerHelpCommand()`, each returning `CommandResponse` instances.  
+- Diagnostics are gathered via `Bootstrap::runtimeState()` and `AavionDB::diagnose()`, then handed back to the caller unchanged to keep REST/CLI/PHP behaviour aligned.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Core\CoreAgent` – central registrar for parsers and commands.  
+- `AavionDB\Core\Modules\ModuleContext` – supplies command registry, logger, diagnostics.  
+- `AavionDB\AavionDB` facade – queried for runtime/diagnostics data.  
+- `AavionDB\Core\CommandResponse` – shared response envelope returned by every handler.
+
 ## Examples
 
 ### CLI

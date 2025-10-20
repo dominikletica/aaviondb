@@ -15,6 +15,18 @@
 - `project info <slug>` – Show detailed project snapshot (summary + entity listing).
 - `list commits <project> [entity] [limit=50]` ↔ `project commits …` – List commit metadata for a project (optional entity scope, default 50 entries).
 
+## Call Flow
+- `system/modules/project/module.php` instantiates `AavionDB\Modules\Project\ProjectAgent` and calls `register()`.  
+- `ProjectAgent::registerParser()` normalises verbs (`project create`, `project delete`, aliases like `project list`) and injects slug/title/description parameters prior to dispatch.  
+- Command handlers (`projectCreateCommand()`, `projectUpdateCommand()`, `projectRemoveCommand()`, `projectDeleteCommand()`, `projectInfoCommand()`, `projectCommitsCommand()`) each return `CommandResponse` objects.  
+- Under the hood the handlers delegate to `BrainRepository` methods (`createProject`, `updateProjectMetadata`, `archiveProject`, `deleteProject`, `projectReport`, `listProjectCommits`). Commits use the `commits` map stored alongside project metadata.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Project\ProjectAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – project persistence and statistics.  
+- `AavionDB\Core\Modules\ModuleContext` – provides access to command registry, logger, and debug helper.  
+- `AavionDB\Core\CommandResponse` – ensures a consistent response schema across CLI/REST/PHP callers.
+
 ## Implementation Notes
 - Resides in `system/modules/project` and leverages `BrainRepository` helpers (`createProject`, `archiveProject`, `deleteProject`, `projectReport`, `listProjectCommits`).
 - Parser rewrites `project ...` commands into structured actions and extracts `slug`, `title`, `description`, `purge_commits` flags.

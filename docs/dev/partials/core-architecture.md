@@ -1,93 +1,139 @@
-# Core Architecture (DRAFT)
+# Core Architecture
 
-> **Status:** Draft – consolidated from the previous `core-architecture.md`
+> **Status:** Maintained  
+> **Scope:** Runtime blueprint, service layout, and orchestration rules.
+
+---
+
+## Overview
+
+AavionDB centres around `AavionDB::setup()`, an idempotent bootstrap that wires the service container, storage, modules, and diagnostics. The bootstrap is invoked automatically by all entry points (`cli.php`, `api.php`, `aaviondb.php`) and should never leak raw exceptions to callers.
+
+---
 
 ## Runtime Boot Sequence
-- `AavionDB::setup()` is idempotent; first call performs full bootstrap, subsequent calls return immediately.  
-- Steps:
-  1. Ensure directory structure via `PathLocator` (system modules, storage, logs, user dirs).  
-  2. Register base services (logger, event bus, parser, command registry, brain repository, module loader).  
-  3. Mount `system.brain`; create default structure if missing.  
-  4. Ensure active user brain (default slug) exists and mount it.  
-  5. Discover system modules (autoload) and user modules.  
-  6. Wire diagnostics (brain integrity, module metadata, command stats).  
-  7. REST remains disabled until `api serve` succeeds.
-- Bootstrap failures must be logged and surfaced as structured error responses; callers should catch `BootstrapException`.
 
-## Core Namespace Layout
+1. **Directory preparation** – `PathLocator` ensures writable directories exist (logs, cache, brains, presets, scheduler, backups).  
+2. **Core services** – The container registers the logger factory, event bus, command parser, command registry, security manager, cache manager, and brain repository.  
+3. **System brain mount** – `BrainRepository` loads `system.brain`, creating defaults for config, scheduler, cache, and security keys when missing.  
+4. **Active user brain** – Resolves the configured active brain; creates `default.brain` on first run.  
+5. **Module discovery** – Loads `system/modules/**` manifests, resolves dependencies, and initialises autoload modules through `ModuleContext`.  
+6. **User module discovery** – Searches `user/modules/**` and repeats the registration process.  
+7. **Diagnostics wiring** – Collects runtime metrics, integrity checks, and module telemetry via `RuntimeState`.  
+8. **REST gating** – The REST layer remains disabled until `api serve` flips `api.enabled = true` and at least one user token exists.  
+
+Any failure logs an error (Monolog `ERROR` level) and surfaces as a structured response with `status=error` and `meta.exception`.
+
+---
+
+## Namespace Layout
+
 ```
 system/
-├── core.php                # Façade (AavionDB)
+├── core.php                # AavionDB façade
 ├── Core/
 │   ├── Bootstrap.php       # Boot pipeline
 │   ├── Container.php       # Lightweight service locator
-│   ├── CommandRegistry.php # Command management
-│   ├── CommandParser.php   # Statement parser
-│   ├── Modules/            # Module loader, descriptors, context
-│   ├── Logging/            # Logger factory
+│   ├── CommandRegistry.php # Command dispatch + telemetry
+│   ├── CommandParser.php   # Statement parsing / handlers
+│   ├── Modules/            # Loader, descriptors, context
+│   ├── Logging/            # Module-aware logger factory
 │   ├── Security/AuthManager.php
 │   ├── EventBus.php        # Publish/subscribe hub
 │   ├── RuntimeState.php    # Diagnostics snapshot
 │   ├── Filesystem/PathLocator.php
 │   ├── Hashing/CanonicalJson.php
 │   ├── Exceptions/         # Exception hierarchy
-│   └── Support/            # Helpers (Arr, etc.)
+│   └── Support/            # Helper utilities
 └── Storage/
     └── BrainRepository.php # Brain persistence
 ```
 
+---
+
 ## Façade (`system/core.php`)
-- Public methods: `setup`, `run`, `command`, `registerParserHandler`, `diagnose`, `events`, `commands`, `parser`, `brains`, `logger`, `isBooted`.  
-- Public methods: `setup`, `run`, `command`, `registerParserHandler`, `diagnose`, `events`, `commands`, `parser`, `brains`, `logger`, `auth`, `isBooted`.  
-- `run`/`command` wrap handlers in `try/catch`, log failures, and always return the unified response array.  
-- `command` uses `CommandParser` to handle CLI-style statements (includes JSON payload detection).  
-- `setup()` is idempotent and lazily invoked by all accessors, so consumers can rely on `AavionDB::run()` without an explicit bootstrap call.
+
+- Public API: `setup`, `run`, `command`, `registerParserHandler`, `diagnose`, `events`, `commands`, `parser`, `brains`, `logger`, `auth`, `security`, `cache`, `isBooted`.  
+- `run(array|string $action, array $parameters = [])` routes structured commands.  
+- `command(string $statement, array $context = [])` parses CLI-style statements (JSON payload support) before dispatching.  
+- Both wrappers translate exceptions into the unified response array and emit telemetry events.  
+- `debugLog()` provides module-scoped debug output when the global debug flag or `--debug` parameter is set.
+
+---
 
 ## Canonical JSON & Hashing
-- `CanonicalJson::encode()` sorts associative keys, preserves indexed arrays, and throws `JsonException` on failure.  
-- `CanonicalJson::hash()` returns SHA-256 hash of the canonical JSON string.  
-- Used for entity payload hashing, commit IDs, and integrity checks.
+
+- `CanonicalJson::encode()` sorts associative keys recursively, preserves indexed array order, and throws `JsonException` on failure.  
+- `CanonicalJson::hash()` generates an SHA-256 digest used for entity commits, presets, and schema fingerprints.  
+- This ensures deterministic hashes across CLI/REST/PHP callers and underpins cache invalidation and deduplication.
+
+---
 
 ## Brain Storage Model
-- System + user brains share the schema:
-  - `meta`, `projects`, `commits`, `config`, `state`.  
-  - Entities contain version map (`version`, `hash`, `commit`, `status`, `payload`, `meta`, timestamps).  
-- Repository responsibilities:
-  - CRUD helpers (`listProjects`, `listEntities`, `saveEntity`, `getEntityVersion`).  
-  - Config API (`setConfigValue`, `getConfigValue`, `deleteConfigValue`, `listConfig`).  
-  - Atomic writes with integrity verification; on mismatch → retry + log failure.  
-  - Emit events (`brain.entity.saved`, `brain.created`, etc.) and populate integrity telemetry for diagnostics.
+
+- Both system and user brains share the structure:  
+  `meta`, `projects`, `entities`, `commits`, `config`, `state`, `scheduler`, `security`, `cache`.  
+- Entities track versions with `{version, status, hash, commit, committed_at, payload, meta}`.  
+- Repository responsibilities:  
+  - CRUD for brains, projects, entities, schemas, presets, scheduler tasks.  
+  - Config operations (`setConfigValue`, `getConfigValue`, `deleteConfigValue`, `listConfig`).  
+  - Atomic writes with optimistic locking (hash comparison) and rollback logging.  
+  - Event emission (`brain.entity.saved`, `brain.project.deleted`, etc.) for downstream modules.  
+- Hash integrity is verified before committing writes; mismatches trigger re-read and retry cycles.
+
+---
 
 ## Command Registry & Parser
-- `CommandRegistry::dispatch()` normalises names, wraps handler execution, logs unexpected exceptions, emits telemetry events, and returns `CommandResponse`.  
-- Parser supports global/action-specific handlers; modules extend syntax via `registerParserHandler` metadata or direct API.  
-- Responses always include `status`, `action`, `message`, `data`, `meta`.
+
+- `CommandParser` tokenises statements, resolves aliases, handles selectors (`@version`, `#hash`, `:fieldset`), and supports quote-aware payload extraction.  
+- Handlers can register pre/post processors via `AavionDB::registerParserHandler()`.  
+- `CommandRegistry::dispatch()` performs final normalisation, permission checks, diagnostic timing, and error wrapping into `CommandResponse`.  
+- Telemetry events: `command.parser.parsed`, `command.executed`, `command.failed` (consumed by LogAgent, EventsAgent, and SchedulerAgent).
+
+---
 
 ## Module Loader
-- Scans `system/modules` + `user/modules`; loads `manifest.json` and `module.php`.  
-- Generates `ModuleDescriptor` (slug, scope, version, dependencies, autoload flag, capabilities, initializer, issues).  
-- `ModuleContext` hands initialisers capability-scoped access to core services (`CommandRegistry`, `EventBus`, `PathLocator`, `BrainRepository`, `AuthManager`, logger).  
-- Autoloaded modules are initialised during bootstrap; dependency chains are resolved recursively (missing/circular/failed deps block the module and emit diagnostics).  
-- Minimal sandbox: scope defaults + declared capabilities are whitelisted; missing privileges raise runtime exceptions when modules request restricted services.
 
-## Diagnostics
-- `RuntimeState::diagnostics()` aggregates paths, command stats, parser metrics, module data, brain integrity, etc.  
-- `BrainRepository::integrityReport()` and `ModuleLoader::diagnostics()` surface detailed insights for dashboards/tests.  
-- Command execution generates telemetry events; modules can consume them.  
-- TODO: integrate with planned log module / diagnostics UI.
+- Reads `manifest.json` for each module (slug, version, capabilities, dependencies, autoload flag).  
+- Initialises modules through `module.php` -> `register(ModuleContext $context)`.  
+- Capability checks gate access to services (e.g., `repository`, `cache`, `security`).  
+- Failures mark the module inactive and record issues in diagnostics; dependent modules are skipped.  
+- Module-specific loggers include `source` metadata to support filtered log views.
 
-## Authentication Management
-- `Security/AuthManager` centralises bootstrap token handling, REST gating, and token audit logging.  
-- Auth state lives in `system.brain` (`auth` + `api` sections). Bootstrap token `admin` remains active until a user token is generated and activated.  
-- REST access is blocked while `api.enabled = false` or when only the bootstrap key exists. Valid requests must supply `Authorization: Bearer <token>` (or `X-API-Key` header).  
-- Successful REST calls update token usage metadata via `BrainRepository::touchAuthKey()` and surface telemetry through diagnostics for future log modules.
-- `BrainRepository` exposes helpers to register/revoke tokens, toggle API availability, and rotate the bootstrap key; modules should use these instead of writing raw JSON.
+---
+
+## Diagnostics & Telemetry
+
+- `RuntimeState::diagnostics()` aggregates filesystem paths, command counts, module states, cache/security telemetry, and export statistics.  
+- Each module contributes via `ModuleContext::diagnostics()` callbacks.  
+- Debug logs follow the `source=<module>` convention for LogAgent filtering.  
+- Planned enhancements: diagnostic snapshots persisted per brain and integration with AavionStudio dashboards.
+
+---
+
+## Authentication & Security Hooks
+
+- `Security\AuthManager` manages bootstrap tokens, REST guard scopes, and audit metadata.  
+- REST access is allowed when:
+  1. `api.enabled = true`
+  2. At least one non-bootstrap token exists
+  3. The incoming token passes scope validation
+- `Security\SecurityManager` handles rate limiting, lockdowns, and request attempt bookkeeping.  
+- Both managers persist state in `system.brain` and expose telemetry used by `security status`.
+
+---
 
 ## Entry Points
-- `api.php` (REST/PHP) and `cli.php` (CLI) both call `setup()`, handle errors gracefully, and apply consistent response schema.  
-- REST requires `api_enabled = true` and non-bootstrap keys; CLI/PHP bypass keys but log actions.
 
-- Expand sandbox policies (filesystem/network caps, configurable scopes) and introduce richer dependency metadata (`provides`, `conflicts`).  
-- Flesh out security partial (permissions model).
-- Add unit/integration tests for parser, storage, auth workflows.  
-- Implement system log module for viewing/rotating Monolog outputs.
+- `api.php` – REST gateway; parses query/body payloads, enforces rate limiting, auth guards, optional debug flag, and dispatches via `AavionDB::run()` or `::command()`.  
+- `cli.php` – Thin wrapper around `AavionDB::command()` with JSON output.  
+- `aaviondb.php` – PHP entry point that loads Composer, bootstraps once per request, and exposes helper functions for embedding AavionDB into other applications.
+
+---
+
+## Roadmap Notes
+
+- Expand sandbox metadata (`provides`, `conflicts`) to allow module capability negotiation.  
+- Persist diagnostic snapshots for UI visualisation.  
+- Harden bootstrap error reporting for headless environments (CLI exit codes + REST meta flags).  
+- Add PHPUnit coverage for bootstrap regression protection.

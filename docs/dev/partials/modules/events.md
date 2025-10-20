@@ -10,6 +10,17 @@
 ## Commands
 - `events listeners` – Return the listener count per event (sorted ascending).
 
+## Call Flow
+- `system/modules/events/module.php` instantiates `AavionDB\Modules\Events\EventsAgent` and calls `register()`.  
+- `EventsAgent::registerParser()` rewrites `events` statements to `events listeners` by default.  
+- `listenersCommand()` queries `ModuleContext::events()->listenerCount()`, sorts the map, and returns the counts via `CommandResponse::success()`.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Events\EventsAgent` – parser + command registrar.  
+- `AavionDB\Core\EventBus` – exposed through `ModuleContext::events()`; provides listener metadata.  
+- `AavionDB\Core\Modules\ModuleContext` – shared entry point for command registry and event bus.  
+- `AavionDB\Core\CommandResponse` – response envelope.
+
 ## Implementation Notes
 - Module lives in `system/modules/events` and requires `events.dispatch`, `commands.register`, `parser.extend`, and `logger.use` capabilities.
 - Listener counts originate from `EventBus::listenerCount()`; diagnostics are read-only and inexpensive.

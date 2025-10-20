@@ -1,113 +1,96 @@
-# 🧩 AAVION DEVELOPMENT MANUAL
+# 🧩 AavionDB Developer Manual
 
-> **Document Version:** 0.1.0-dev  
-> **Framework Core:** AavionDB  
-> **Audience:** Developers and Module Authors  
-> **Location:** `/docs/dev/MANUAL.md`
->
-> This index aggregates the current draft specifications for the AavionDB core and its ecosystem.
-> Detailed documents are stored in dedicated partials. Keep [`CHANGELOG.md`](../../CHANGELOG.md) and
-> [`.codex/NOTES.md`](../../.codex/NOTES.md) in sync with structural changes. A high-level overview lives in
-> [`.codex/AGENTS.md`](../../.codex/AGENTS.md).
+> **Audience:** Module authors, core contributors, and maintainers  
+> **Location:** `/docs/dev/MANUAL.md`  
+> **Companion Guide:** [User Manual](../user/MANUAL.md)
+
+This manual acts as the technical reference for AavionDB. It explains architecture decisions, call flows, module responsibilities, and integration points. Each section links to detailed partials that can be maintained independently.
 
 ---
 
 ## 📘 Table of Contents
-1. [Core Architecture](#-core-architecture)  
-2. [File Structure](#-file-structure)  
-3. [Bootstrap Process](#-bootstrap-process)  
-4. [Brains & Storage Engine](#-brains--storage-engine)  
-5. [Modules & Autoloading](#-modules--autoloading)  
-6. [Logging & Diagnostics](#-logging--diagnostics)  
-7. [Agents & Command Registry](#-agents--command-registry)  
-8. [REST API Layer](#-rest-api-layer)  
-9. [Error Handling](#-error-handling)  
-10. [UI & Web Console](#-ui--web-console)  
-11. [Entry Points](#-entry-points)  
-12. [Authentication & API Keys](#-authentication--api-keys)  
-13. [Versioning & Commit Hashes](#-versioning--commit-hashes)  
-14. [Hooks, Events & Listeners](#-hooks-events--listeners)  
-15. [Extending AavionDB](#-extending-aaviondb)  
-16. [Security & Permissions](#-security--permissions)  
-17. [Appendix](#-appendix)
+
+### 1. Architecture & Runtime
+- [Runtime Blueprint](./partials/core-architecture.md) – service layout, dependency graph, bootstrap stages.
+- [Filesystem Layout](./partials/file-structure.md) – directory responsibilities, writable locations, generated assets.
+- [Bootstrap Sequence](./partials/bootstrap.md) – from entry point to ready `AavionDB` instance.
+- [Entry Points](./partials/entry-points.md) – CLI, REST (`api.php`), PHP (`aaviondb.php`) call chains.
+
+### 2. Storage & State
+- [Brains & Storage Engine](./partials/brains-and-storage.md) – persistence model, repository contracts, hashing.
+- [Versioning & Commits](./partials/versioning.md) – selectors, canonical JSON encoding, integrity guarantees.
+- [Cache Engine](./partials/modules/cache.md) – cache directories, invalidation strategies, tag semantics.
+
+### 3. Command Routing & Modules
+- [Agents & Command Registry](./partials/agents-and-command-registry.md) – parser workflow, module registration.
+- [Module Architecture](./partials/modules.md) – manifest format, shared traits, context helpers.
+- [Events & Hooks](./partials/events-and-hooks.md) – listener lifecycle, emitting patterns, planned streams.
+
+### 4. Interfaces & Integrations
+- [REST API Layer](./partials/rest-api.md) – request parsing, security hooks, dispatch pipeline.
+- [Authentication](./partials/authentication.md) – token lifetimes, scope resolution, guard hooks.
+- [UI Console](./partials/ui-console.md) – Studio integration expectations and planned adapters.
+- [Extending AavionDB](./partials/extending.md) – custom module scaffolding, service injection.
+
+### 5. Diagnostics & Observability
+- [Logging & Diagnostics](./partials/logging-and-diagnostics.md) – Monolog channels, debug flag signal flow.
+- [Error Handling](./partials/error-handling.md) – response envelope, exception mapping, retry headers.
+- [Security](./partials/security.md) – rate limiter buckets, lockdown flow, telemetry persistence.
+
+### 6. Module Reference (Per-Agent Deep Dive)
+
+Each module partial documents command handlers, call flows, primary classes, and outstanding work:
+
+| Module | Partial |
+|--------|---------|
+| CoreAgent | [core](./partials/modules/core.md) |
+| BrainAgent | [brain](./partials/modules/brain.md) |
+| ProjectAgent | [project](./partials/modules/project.md) |
+| EntityAgent | [entity](./partials/modules/entity.md) |
+| ConfigAgent | [config](./partials/modules/config.md) |
+| ExportAgent | [export](./partials/modules/export.md) |
+| SchemaAgent | [schema](./partials/modules/schema.md) |
+| AuthAgent | [auth](./partials/modules/auth.md) |
+| ApiAgent | [api](./partials/modules/api.md) |
+| SchedulerAgent | [scheduler](./partials/modules/scheduler.md) |
+| CacheAgent | [cache](./partials/modules/cache.md) |
+| SecurityAgent | [security](./partials/modules/security.md) |
+| LogAgent | [log](./partials/modules/log.md) |
+| EventsAgent | [events](./partials/modules/events.md) |
+| UiAgent | [ui](./partials/modules/ui.md) *(planned integration hooks)* |
+
+Each document follows a consistent layout: Responsibilities → Command Surface → Call Flow → Key Classes → Error Handling → TODOs.
+
+### 7. Tooling & Roadmap
+
+- [Developer Notes](../../.codex/NOTES.md) – working log, TODO tracking, roadmap to alpha.
+- [Agents Handbook](../../.codex/AGENTS.md) – session rules, documentation policy, reference upkeep.
+- [Command Reference](./commands.md) – canonical command syntax (includes aliases and selectors).
+- [Class Map](./classmap.md) – tree of namespaced classes, method signatures, and return types.
+
+### 8. Future Work
+
+Planned enhancements are tracked in [`docs/dev/partials/extending.md`](./partials/extending.md) and `.codex/NOTES.md`. They include:
+
+- Brain maintenance utilities (compaction, repair, retention previews).
+- Cascade hooks between projects and entities.
+- Config import/export with audit logging.
+- Export destinations, scheduler hooks, and schema-aware profiles.
+- Advanced scheduler features (cron expressions, dry-run).
+- Cache warmup helpers for heavy exports.
+- Security whitelists and audit trails.
+- Events streaming and telemetry dashboards.
+- Log storage abstraction.
+- UiAgent scaffolding for AavionStudio.
+- Comprehensive PHPUnit coverage once core features stabilise.
 
 ---
 
-## 🧠 Core Architecture
-- [`docs/dev/core-architecture.md`](./partials/core-architecture.md) *(DRAFT)* – runtime blueprint, service layout.
+## 🔗 Related Resources
 
-## 🗂️ File Structure
-- [`docs/dev/partials/file-structure.md`](./partials/file-structure.md) *(DRAFT)*
+- [User Manual](../user/MANUAL.md) – onboarding guide and end-user workflows.
+- [README.md](../../README.md) – high-level product overview for the repository.
+- [`CHANGELOG.md`](../../CHANGELOG.md) – release history.
+- [`/LICENSE`](../../LICENSE) – project license.
 
-## ⚙️ Bootstrap Process
-- [`docs/dev/partials/bootstrap.md`](./partials/bootstrap.md) *(DRAFT)*
-
-## 🧩 Brains & Storage Engine
-- [`docs/dev/partials/brains-and-storage.md`](./partials/brains-and-storage.md) *(DRAFT)*
-
-## 🧱 Modules & Autoloading
-- [`docs/dev/partials/modules.md`](./partials/modules.md) *(DRAFT)*
-
-## 📝 Logging & Diagnostics
-- [`docs/dev/partials/logging-and-diagnostics.md`](./partials/logging-and-diagnostics.md) *(DRAFT)*
-
-## 🧠 Agents & Command Registry
-- [`docs/dev/partials/agents-and-command-registry.md`](./partials/agents-and-command-registry.md) *(DRAFT)*
-
-## 🌐 REST API Layer
-- [`docs/dev/partials/rest-api.md`](./partials/rest-api.md) *(DRAFT)* 
-
-## 🚨 Error Handling
-- [`docs/dev/partials/error-handling.md`](./partials/error-handling.md) – response envelope, HTTP codes, and common error messages.
-
-## 🎨 UI & Web Console
-- [`docs/dev/partials/ui-console.md`](./partials/ui-console.md) *(DRAFT)*
-
-## 🛠️ Entry Points
-- [`docs/dev/partials/entry-points.md`](./partials/entry-points.md) *(DRAFT)*
-
-## 🔐 Authentication & API Keys
-- [`docs/dev/partials/authentication.md`](./partials/authentication.md) *(DRAFT)*
-
-## 🧬 Versioning & Commit Hashes
-- [`docs/dev/partials/versioning.md`](./partials/versioning.md)
-
-## 🪝 Hooks, Events & Listeners
-- [`docs/dev/partials/events-and-hooks.md`](./partials/events-and-hooks.md) *(DRAFT)*
-
-## 🧩 Extending AavionDB
-- [`docs/dev/partials/extending.md`](./partials/extending.md) *(DRAFT)*
-
-## 🔒 Security & Permissions
-- [`docs/dev/partials/security.md`](./partials/security.md) *(DRAFT – outlines pending)*
-
-## 🧭 Planned Features & Future Improvements
-
-> This section collects conceptual and architectural goals that are intended for future releases of **AavionDB** and its ecosystem.  
-> These items are not yet implemented but serve as design reminders for Codex and contributors.
-
-- **Decouple UI Interface** → Migrate the integrated management UI into a standalone project: **AavionStudio**, a Vite-powered web application using TailwindCSS, PostCSS, Alpine.js, and Tabler Icons.  
-- **SchemaAgent Enhancements** → Add cached lint result caching and Studio authoring workflows for fieldsets. 
-- **Schema Versioning & Compatibility Layer** → Add support for versioned schemas (e.g., `schema@19`) with backward compatibility validation between revisions.  
-- **Consistent Version Handling** → Standardise all commands on the `@version` selector (replace legacy documentation accordingly).  
-- **Extended Diagnostic Dashboard** → Enhance the built-in diagnostics with dependency visualization, memory footprint tracking, and event throughput statistics.  
-- **Testing Module Integration** → Provide a dedicated Testing Agent that coordinates `phpunit` runs, aggregates logs, and produces comprehensive QA reports.  
-- **Live Event Monitor** → Add real-time event tracing within AavionStudio using a WebSocket bridge.  
-- **WebSocket Bridge Agent** → Implement push-based data synchronization between AavionDB and connected Studio clients.  
-- **Enhanced REST API Layer** → Extend API with batched transactions, asynchronous exports, and granular action scopes.  
-- **Grav Plugin Bridge** → Build a plugin integration to expose AavionDB data as virtual pages and blueprints directly inside Grav CMS.  
-- **Schema-Aware Exports** → Enable exports that respect fieldset definitions for cleaner, LLM-optimized JSON output.  
-- **Access Control Extensions** → Expand the Auth Agent with scoped API keys, command-level permissions, and optional role sets.  
-- **UI Extensions System** → Allow Studio-level plugins to register custom dashboards, data visualizers, or tool panels via the UI Agent.  
-- **Brain Integrity Utilities** → Add validation, compaction, and self-repair tools for Brain files.  
-- **Performance Optimizations** → Introduce schema caching, delta-save operations, and faster lookup indexes for large datasets.  
-- **LLM-optimized Exporter** → Implement advanced export profiles optimized for contextual AI ingestion and token-aware data segmentation.
-
-## 📎 Appendix
-- [`/.codex/AGENTS.md`](../../.codex/AGENTS.md) – quick overview & workflow guidance  
-- [`CHANGELOG.md`](../../CHANGELOG.md) – release notes  
-- [`.codex/NOTES.md`](../../.codex/NOTES.md) – development log  
-- [`README.md`](../../README.md) – user-facing overview  
-- [`docs/dev/commands.md`](./commands.md) – consolidated command reference  
-- [`docs/dev/classmap.md`](./classmap.md) – class/method overview for quick lookup  
-- `/LICENSE`
+Maintain this index whenever partials change. New modules should add their partial under `partials/modules/` and update the table above.

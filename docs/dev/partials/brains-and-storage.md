@@ -1,7 +1,7 @@
-# Brains & Storage Engine (DRAFT)
+# Brains & Storage Engine
 
-> **Status:** Draft  
-> **Last updated:** 0.1.0-dev
+> **Status:** Maintained  
+> **Last updated:** 2025-10-20
 
 ## System Brain
 - File: `system/storage/system.brain` (JSON).  
@@ -32,4 +32,11 @@
 - Last successful write (hash, attempts, timestamp).  
 - Last failure reason (if any).  
 - Security snapshot: API enabled flag, bootstrap status, token counters, last REST access timestamps.  
-This feeds `AavionDB::diagnose()` and future diagnostics dashboards.
+- Cache snapshot: entry statistics, TTL, last purge timestamp.
+
+This feeds `AavionDB::diagnose()` output and future diagnostics dashboards.
+
+## Outstanding Work
+- Add compaction routines (compress historical versions, optional relocation).  
+- Implement dry-run preview for `brain cleanup`.  
+- Persist integrity metrics per brain for historical tracking.

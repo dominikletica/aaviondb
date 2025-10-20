@@ -20,6 +20,12 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 - **Export functionality** – Create JSON-based slices for integration with tools like ChatGPT or other LLMs.  
   These parser-friendly files act as contextual datasets for AI tools that can’t natively store large amounts of structured data.
 
+## 📚 Documentation
+
+- [User Manual](docs/user/MANUAL.md) – Step-by-step guide in plain language with practical examples.
+- [Developer Manual](docs/dev/MANUAL.md) – Technical reference covering architecture, modules, and call flows.
+- [Command Reference](docs/dev/commands.md) and [Class Map](docs/dev/classmap.md) – Quick lookup tables kept in sync with core updates.
+
 ## 🧩 Command Overview
 
 ### Core & Diagnostics
@@ -146,10 +152,10 @@ Commands can be invoked universally across interfaces:
 
 REST:
 ```bash
-POST api.php?command
-{
-"list projects"
-}
+curl -X POST https://example.test/api.php \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"list projects"}'
 ```
 or
 ```bash

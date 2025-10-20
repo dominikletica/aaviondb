@@ -13,6 +13,22 @@
 - `security lockdown [seconds]` – Manually trigger a lockdown (duration defaults to `security.ddos_lockdown`).
 - `security purge` – Remove cached counters, blocks, and lockdown artefacts (tagged `security:*`).
 
+## Call Flow
+- `system/modules/security/module.php` instantiates `AavionDB\Modules\Security\SecurityAgent` and calls `register()`.  
+- `SecurityAgent::registerParser()` rewrites `security` statements, capturing subcommands and `duration` flags.  
+- `handleSecurityCommand()` dispatches to dedicated methods:  
+  - `configCommand()` → `SecurityManager::status()` gathers config, lockdown info, and cache telemetry.  
+  - `toggleCommand()` → `SecurityManager::setEnabled()` flips enforcement and purges caches when disabling.  
+  - `lockdownCommand()` → validates duration, invokes `SecurityManager::lockdown()` with origin `manual`, and returns retry metadata.  
+  - `purgeCommand()` → `SecurityManager::purge()` removes cached artefacts tagged `security:*`.  
+- The REST entry point (`api.php`) calls `SecurityManager::preflight()`, `registerAttempt()`, `registerFailure()`, and `registerSuccess()`—all configured through this module’s commands.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Security\SecurityAgent` – parser + command registrar.  
+- `AavionDB\Core\Security\SecurityManager` – rate limiting, lockdown logic, cache interactions.  
+- `AavionDB\Core\Modules\ModuleContext` – provides security manager, command registry, and logger.  
+- `AavionDB\Core\CommandResponse` – consistent response structure.
+
 ## Implementation Notes
 - Module is located in `system/modules/security`; manifest requests `security.manage`, `commands.register`, `parser.extend`, and `logger.use` capabilities.
 - Backed by `AavionDB\Core\Security\SecurityManager`, which stores configuration in the system brain (`security.active`, `security.rate_limit`, `security.global_limit`, `security.block_duration`, `security.ddos_lockdown`, `security.failed_limit`, `security.failed_block`).

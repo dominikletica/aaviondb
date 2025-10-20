@@ -17,6 +17,24 @@
 - `schema save <slug> {json} [--merge=0|1]` – Upsert helper that creates the schema if it does not exist.
 - `schema delete <slug> [@version|#commit]` – Delete a schema entirely or remove a specific revision.
 
+## Call Flow
+- `system/modules/schema/module.php` instantiates `AavionDB\Modules\Schema\SchemaAgent` and calls `register()`.  
+- `SchemaAgent::registerParser()` rewrites verbs (`schema list`, `schema show`, `schema lint`, etc.) and lifts selectors/slug arguments into structured parameters before dispatch.  
+- Command handlers:  
+  - `schemaListCommand()` → `BrainRepository::listEntities('fieldsets')` and optionally `listEntityVersions()`; emits debug telemetry with counts.  
+  - `schemaShowCommand()` → resolves selectors via `parseSelector()` and fetches the record with `getEntityVersion('fieldsets', …)`.  
+  - `schemaLintCommand()` → delegates to `SchemaValidator::assertValidSchema()`.  
+  - `schemaSaveCommand()` (shared by `create`, `update`, `save`) → normalises slug/payload, validates JSON, and persists using `BrainRepository::saveEntity()` with merge flags.  
+  - `schemaDeleteCommand()` → removes entities or specific revisions through `BrainRepository::deleteEntity()` / `deleteEntityVersion()`.  
+- Logging uses the module-scoped logger with `source=schema` to aid LogAgent filtering.
+
+## Key Classes & Collaborators
+- `AavionDB\Modules\Schema\SchemaAgent` – parser + command registrar.  
+- `AavionDB\Storage\BrainRepository` – persistence layer for the `fieldsets` project.  
+- `AavionDB\Schema\SchemaValidator` – JSON Schema validation and normalisation.  
+- `AavionDB\Core\Modules\ModuleContext` – command registry, logger, debug helper.  
+- `AavionDB\Core\CommandResponse` – uniform response wrapper for success/error states.
+
 ## Implementation Notes
 - Module is located at `system/modules/schema`; schema persistence is handled via `BrainRepository::saveEntity()` against the special `fieldsets` project.
 - Parser recognises inline selectors (e.g. `schema show character@12`) and forwards references to `BrainRepository::getEntityVersion()`.
