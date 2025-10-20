@@ -80,6 +80,9 @@ php cli.php "brain cleanup storyverse --keep=5"
 - Deletes inactive versions for every entity in `storyverse`.
 - Keeps the latest five revisions per entity.
 - Add an entity slug to target a single entity.
+- Preview the effect first: `php cli.php "brain cleanup storyverse --keep=5 --dry-run"` (nothing is deleted).
+- Need to tidy commit indexes or metadata afterwards? Run `php cli.php "brain compact storyverse"` to rebuild commit lookups, or `php cli.php "brain repair storyverse"` to realign active versions, statuses, and timestamps (both accept `--dry-run`).
+- Before large changes, create a snapshot: `php cli.php "brain backup storyverse label=nightly --compress=1"`. List backups with `brain backups`, prune old ones via `brain backup prune storyverse --keep=5`, and restore with `brain restore storyverse--nightly-20251020_083000.brain.gz storyverse --overwrite=1`.
 
 ---
 

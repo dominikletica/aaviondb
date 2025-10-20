@@ -15,6 +15,9 @@ Useful commands:
 - `brains` – list available brains.
 - `brain switch <slug>` – change the active brain.
 - `brain backup [slug]` – create a backup copy.
+- `brain backups [slug]` – list existing backups for a brain.
+- `brain backup prune <slug|*> [--keep=10]` – prune backups via retention rules.
+- `brain restore <backup> [target]` – restore a snapshot (optionally into a new brain).
 
 ---
 

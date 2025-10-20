@@ -19,6 +19,24 @@ use function array_keys;
 use function array_slice;
 use function array_reverse;
 use function array_values;
+use function array_column;
+use function array_unique;
+use function basename;
+use function date;
+use function fclose;
+use function feof;
+use function file_get_contents;
+use function filemtime;
+use function fopen;
+use function fread;
+use function fwrite;
+use function glob;
+use function gzclose;
+use function gzeof;
+use function gzopen;
+use function gzread;
+use function gzwrite;
+use function filesize;
 use function in_array;
 use function is_array;
 use function is_bool;
@@ -28,7 +46,12 @@ use function ksort;
 use function krsort;
 use function sprintf;
 use function strtolower;
+use function sys_get_temp_dir;
+use function tempnam;
+use function time;
+use function strtotime;
 use function trim;
+use function unlink;
 use function usort;
 
 /**
@@ -745,15 +768,15 @@ final class BrainRepository
         ];
     }
 
-    public function purgeInactiveEntityVersions(string $projectSlug, ?string $entitySlug = null, int $keep = 0): array
+    public function purgeInactiveEntityVersions(string $projectSlug, ?string $entitySlug = null, int $keep = 0, bool $dryRun = false): array
     {
         $slugProject = $this->normalizeKey($projectSlug);
         $this->assertWriteAllowed($slugProject);
 
         $brain = $this->loadActiveBrain();
 
-        if (!isset($brain['projects'][$slugProject]) || !is_array($brain['projects'][$slugProject])) {
-            throw new StorageException(sprintf('Project "%s" not found in active brain.', $projectSlug));
+        if (!isset($brain['projects'][$slugProject]) || !\is_array($brain['projects'][$slugProject])) {
+            throw new StorageException(\sprintf('Project "%s" not found in active brain.', $projectSlug));
         }
 
         $normalizedEntity = $entitySlug !== null ? $this->normalizeKey($entitySlug) : null;
@@ -762,127 +785,568 @@ final class BrainRepository
             'project' => $slugProject,
             'entity' => $normalizedEntity,
             'keep' => $keep,
+            'dry_run' => $dryRun,
             'source' => 'storage:brain',
         ]);
 
-        $entities = &$brain['projects'][$slugProject]['entities'];
-
-        if (!is_array($entities)) {
+        $entities = $brain['projects'][$slugProject]['entities'] ?? [];
+        if (!\is_array($entities)) {
             $entities = [];
         }
 
         $targets = [];
 
-        if ($entitySlug !== null) {
-            $slugEntity = $normalizedEntity;
-            if (!isset($entities[$slugEntity]) || !is_array($entities[$slugEntity])) {
-                throw new StorageException(sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
+        if ($normalizedEntity !== null) {
+            if (!isset($entities[$normalizedEntity]) || !\is_array($entities[$normalizedEntity])) {
+                throw new StorageException(\sprintf('Entity "%s" not found in project "%s".', $entitySlug, $projectSlug));
             }
-            $targets[$slugEntity] = &$entities[$slugEntity];
+
+            $targets[$normalizedEntity] = $entities[$normalizedEntity];
         } else {
-            foreach ($entities as $slug => &$entity) {
-                if (!is_array($entity)) {
+            foreach ($entities as $slug => $entity) {
+                if (!\is_array($entity)) {
                     continue;
                 }
-                $targets[$slug] = &$entity;
+                $targets[$slug] = $entity;
             }
-            unset($entity);
         }
 
+        $keep = \max(0, $keep);
         $timestamp = $this->timestamp();
+
+        $plan = [];
         $removedTotal = 0;
-        $details = [];
+        $removedCommits = 0;
 
-        $keep = max(0, $keep);
-
-        foreach ($targets as $slug => &$entity) {
-            if (!isset($entity['versions']) || !is_array($entity['versions'])) {
+        foreach ($targets as $slug => $entity) {
+            if (!isset($entity['versions']) || !\is_array($entity['versions'])) {
                 continue;
             }
 
-            $initial = \count($entity['versions']);
-            $removedForEntity = 0;
+            $versions = $entity['versions'];
+            $initial = \count($versions);
 
-            $allowed = [];
-            if ($keep > 0) {
-                $versionKeys = array_keys($entity['versions']);
-                \rsort($versionKeys, SORT_NUMERIC);
-                $allowed = array_map('strval', array_slice($versionKeys, 0, $keep));
+            if ($initial === 0) {
+                $plan[] = [
+                    'entity' => $slug,
+                    'initial_versions' => 0,
+                    'removed_versions' => [],
+                    'kept_versions' => [],
+                    'active_version' => $entity['active_version'] ?? null,
+                    'commits_removed' => 0,
+                ];
+                continue;
             }
 
-            foreach ($entity['versions'] as $key => $record) {
+            $activeVersion = isset($entity['active_version']) ? (string) $entity['active_version'] : null;
+
+            $keepCandidates = [];
+            if ($keep > 0) {
+                $versionKeys = \array_keys($versions);
+                \rsort($versionKeys, SORT_NUMERIC);
+                $keepCandidates = \array_map('strval', \array_slice($versionKeys, 0, $keep));
+            }
+
+            if ($activeVersion !== null) {
+                $keepCandidates[] = $activeVersion;
+            }
+
+            $keepCandidates = \array_unique($keepCandidates);
+
+            $versionsToRemove = [];
+            $commitsToRemove = [];
+
+            foreach ($versions as $key => $record) {
                 $keyStr = (string) $key;
                 $status = $record['status'] ?? 'inactive';
 
-                if ($keep > 0 && in_array($keyStr, $allowed, true)) {
+                if (\in_array($keyStr, $keepCandidates, true)) {
                     continue;
                 }
 
                 if ($status === 'active') {
-                    $allowed[] = $keyStr;
+                    $keepCandidates[] = $keyStr;
                     continue;
                 }
 
-                if (isset($record['commit']) && is_string($record['commit'])) {
-                    unset($brain['commits'][$record['commit']]);
-                } else {
-                    foreach ($brain['commits'] ?? [] as $hash => $commitMeta) {
-                        if (!is_array($commitMeta)) {
-                            continue;
-                        }
+                $versionsToRemove[] = $keyStr;
 
-                        if (($commitMeta['project'] ?? null) === $slugProject
-                            && ($commitMeta['entity'] ?? null) === $slug
-                            && ($commitMeta['version'] ?? null) === (string) $key) {
-                            unset($brain['commits'][$hash]);
-                        }
-                    }
+                $commitHash = null;
+                if (isset($record['commit']) && \is_string($record['commit']) && $record['commit'] !== '') {
+                    $commitHash = $record['commit'];
+                } else {
+                    $commitHash = $this->findCommitHashForVersion($brain, $slugProject, $slug, $keyStr);
                 }
 
-                unset($entity['versions'][$key]);
-                ++$removedForEntity;
+                if ($commitHash !== null) {
+                    $commitsToRemove[] = $commitHash;
+                }
             }
 
-            if ($removedForEntity > 0) {
-                $removedTotal += $removedForEntity;
-                $details[] = [
-                    'entity' => $slug,
-                    'removed_versions' => $removedForEntity,
-                    'remaining_versions' => \count($entity['versions']),
-                ];
-                $entity['updated_at'] = $timestamp;
-            }
-        }
-        unset($entity);
+            $versionsToRemove = \array_values($versionsToRemove);
+            $commitsToRemove = \array_values(\array_unique(\array_filter($commitsToRemove, static fn ($value) => \is_string($value) && $value !== '')));
 
-        if ($removedTotal > 0) {
-            $brain['projects'][$slugProject]['updated_at'] = $timestamp;
-            $brain['meta']['updated_at'] = $timestamp;
-            $this->activeBrainData = $brain;
-            $this->persistActiveBrain();
+            $plan[] = [
+                'entity' => $slug,
+                'initial_versions' => $initial,
+                'removed_versions' => $versionsToRemove,
+                'kept_versions' => $keepCandidates,
+                'active_version' => $activeVersion,
+                'commits_removed' => \count($commitsToRemove),
+            ];
 
-            $this->events->emit('brain.entity.cleanup', [
-                'project' => $slugProject,
-                'entity' => $normalizedEntity,
-                'removed_versions' => $removedTotal,
-                'keep' => $keep,
-            ]);
-
-            AavionDB::debugLog('Inactive versions purged.', [
-                'project' => $slugProject,
-                'entity' => $normalizedEntity,
-                'removed_versions' => $removedTotal,
-                'keep' => $keep,
-                'source' => 'storage:brain',
-            ]);
+            $removedTotal += \count($versionsToRemove);
+            $removedCommits += \count($commitsToRemove);
         }
 
-        return [
+        $result = [
             'project' => $slugProject,
             'entity' => $normalizedEntity,
             'removed_versions' => $removedTotal,
+            'removed_commits' => $removedCommits,
             'keep' => $keep,
-            'details' => $details,
+            'dry_run' => $dryRun,
+            'details' => $plan,
+        ];
+
+        if ($dryRun || $removedTotal === 0) {
+            return $result;
+        }
+
+        $workingBrain = $brain;
+
+        foreach ($plan as $entry) {
+            $entitySlug = $entry['entity'];
+            if (!isset($workingBrain['projects'][$slugProject]['entities'][$entitySlug]['versions'])) {
+                continue;
+            }
+
+            foreach ($entry['removed_versions'] as $versionKey) {
+                if (!isset($workingBrain['projects'][$slugProject]['entities'][$entitySlug]['versions'][$versionKey])) {
+                    continue;
+                }
+
+                $record = $workingBrain['projects'][$slugProject]['entities'][$entitySlug]['versions'][$versionKey];
+                $this->removeCommitReference($workingBrain, $slugProject, $entitySlug, $versionKey, \is_array($record) ? $record : null);
+                unset($workingBrain['projects'][$slugProject]['entities'][$entitySlug]['versions'][$versionKey]);
+            }
+
+            if (\count($entry['removed_versions']) > 0) {
+                $workingBrain['projects'][$slugProject]['entities'][$entitySlug]['updated_at'] = $timestamp;
+            }
+        }
+
+        $workingBrain['projects'][$slugProject]['updated_at'] = $timestamp;
+        $workingBrain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $workingBrain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.entity.cleanup', [
+            'project' => $slugProject,
+            'entity' => $normalizedEntity,
+            'removed_versions' => $removedTotal,
+            'removed_commits' => $removedCommits,
+            'keep' => $keep,
+        ]);
+
+        AavionDB::debugLog('Inactive versions purged.', [
+            'project' => $slugProject,
+            'entity' => $normalizedEntity,
+            'removed_versions' => $removedTotal,
+            'removed_commits' => $removedCommits,
+            'keep' => $keep,
+            'source' => 'storage:brain',
+        ]);
+
+        return $result;
+    }
+
+    public function compactBrain(?string $projectSlug = null, bool $dryRun = false): array
+    {
+        $brain = $this->loadActiveBrain();
+        $targets = $this->resolveProjectTargets($brain, $projectSlug, true);
+
+        $timestamp = $this->timestamp();
+        $existingCommits = isset($brain['commits']) && \is_array($brain['commits']) ? $brain['commits'] : [];
+        $newCommits = $existingCommits;
+
+        $summary = [];
+        $totalRemoved = 0;
+        $totalAdded = 0;
+        $entitiesReordered = 0;
+        $modified = false;
+
+        foreach ($targets as $slug => $project) {
+            $projectRemoved = 0;
+            $projectAdded = 0;
+            $projectEntities = [];
+            $projectModified = false;
+
+            if (!isset($project['entities']) || !\is_array($project['entities'])) {
+                $summary[] = [
+                    'slug' => $slug,
+                    'entities' => [],
+                    'commits_removed' => 0,
+                    'commits_added' => 0,
+                ];
+                continue;
+            }
+
+            foreach ($existingCommits as $hash => $commit) {
+                if (!\is_array($commit)) {
+                    continue;
+                }
+
+                if (($commit['project'] ?? null) !== $slug) {
+                    continue;
+                }
+
+                if (isset($newCommits[$hash])) {
+                    unset($newCommits[$hash]);
+                    ++$projectRemoved;
+                }
+            }
+
+            foreach ($project['entities'] as $entitySlug => $entity) {
+                if (!\is_array($entity) || !isset($entity['versions']) || !\is_array($entity['versions'])) {
+                    $projectEntities[] = [
+                        'slug' => $entitySlug,
+                        'versions_reordered' => false,
+                        'commits_linked' => 0,
+                    ];
+                    continue;
+                }
+
+                $versions = $entity['versions'];
+                $orderedKeys = \array_keys($versions);
+                $sortedKeys = $orderedKeys;
+                \usort($sortedKeys, static fn ($a, $b) => (int) $a <=> (int) $b);
+
+                $reordered = $orderedKeys !== $sortedKeys;
+
+                if ($reordered) {
+                    $sortedVersions = [];
+                    foreach ($sortedKeys as $versionKey) {
+                        $sortedVersions[(string) $versionKey] = $versions[$versionKey];
+                    }
+                    $versions = $sortedVersions;
+                    $brain['projects'][$slug]['entities'][$entitySlug]['versions'] = $versions;
+                    $projectModified = true;
+                    ++$entitiesReordered;
+                }
+
+                $linkedCommits = 0;
+
+                foreach ($versions as $versionKey => $record) {
+                    if (!\is_array($record)) {
+                        continue;
+                    }
+
+                    if (!isset($record['commit']) || !\is_string($record['commit']) || $record['commit'] === '') {
+                        continue;
+                    }
+
+                    $commitHash = $record['commit'];
+                    $existing = $existingCommits[$commitHash] ?? null;
+
+                    $entry = \is_array($existing) ? $existing : [];
+                    $entry['project'] = $slug;
+                    $entry['entity'] = $entitySlug;
+                    $entry['version'] = (string) $versionKey;
+
+                    if (isset($record['hash'])) {
+                        $entry['hash'] = $record['hash'];
+                    }
+
+                    if (isset($record['committed_at'])) {
+                        $entry['timestamp'] = $record['committed_at'];
+                    } elseif (!isset($entry['timestamp'])) {
+                        $entry['timestamp'] = $timestamp;
+                    }
+
+                    if (isset($record['merge'])) {
+                        $entry['merge'] = $record['merge'];
+                    } elseif (isset($existing['merge'])) {
+                        $entry['merge'] = $existing['merge'];
+                    }
+
+                    if (isset($record['fieldset'])) {
+                        $entry['fieldset'] = $record['fieldset'];
+                    } elseif (isset($entity['fieldset'])) {
+                        $entry['fieldset'] = $entity['fieldset'];
+                    } elseif (isset($existing['fieldset'])) {
+                        $entry['fieldset'] = $existing['fieldset'];
+                    }
+
+                    if (isset($record['source_reference'])) {
+                        $entry['source_reference'] = $record['source_reference'];
+                    } elseif (isset($existing['source_reference'])) {
+                        $entry['source_reference'] = $existing['source_reference'];
+                    }
+
+                    if (isset($record['fieldset_reference'])) {
+                        $entry['fieldset_reference'] = $record['fieldset_reference'];
+                    } elseif (isset($existing['fieldset_reference'])) {
+                        $entry['fieldset_reference'] = $existing['fieldset_reference'];
+                    }
+
+                    $newCommits[$commitHash] = $entry;
+
+                    if ($existing === null) {
+                        ++$projectAdded;
+                    }
+
+                    ++$linkedCommits;
+                }
+
+                $projectEntities[] = [
+                    'slug' => $entitySlug,
+                    'versions_reordered' => $reordered,
+                    'commits_linked' => $linkedCommits,
+                ];
+            }
+
+            if ($projectRemoved > 0 || $projectAdded > 0 || $projectModified) {
+                $modified = true;
+                $brain['projects'][$slug]['updated_at'] = $timestamp;
+            }
+
+            $summary[] = [
+                'slug' => $slug,
+                'entities' => $projectEntities,
+                'commits_removed' => $projectRemoved,
+                'commits_added' => $projectAdded,
+            ];
+
+            $totalRemoved += $projectRemoved;
+            $totalAdded += $projectAdded;
+        }
+
+        if (!$modified || $dryRun) {
+            return [
+                'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+                'dry_run' => $dryRun,
+                'projects' => $summary,
+                'commits_removed' => $totalRemoved,
+                'commits_added' => $totalAdded,
+                'entities_reordered' => $entitiesReordered,
+            ];
+        }
+
+        \ksort($newCommits);
+        $brain['commits'] = $newCommits;
+        $brain['meta']['updated_at'] = $timestamp;
+
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.compacted', [
+            'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+            'commits_removed' => $totalRemoved,
+            'commits_added' => $totalAdded,
+            'entities_reordered' => $entitiesReordered,
+        ]);
+
+        AavionDB::debugLog('Brain compacted.', [
+            'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+            'commits_removed' => $totalRemoved,
+            'commits_added' => $totalAdded,
+            'entities_reordered' => $entitiesReordered,
+            'source' => 'storage:brain',
+        ]);
+
+        return [
+            'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+            'dry_run' => false,
+            'projects' => $summary,
+            'commits_removed' => $totalRemoved,
+            'commits_added' => $totalAdded,
+            'entities_reordered' => $entitiesReordered,
+        ];
+    }
+
+    public function repairBrain(?string $projectSlug = null, bool $dryRun = false): array
+    {
+        $brain = $this->loadActiveBrain();
+        $targets = $this->resolveProjectTargets($brain, $projectSlug, true);
+
+        $timestamp = $this->timestamp();
+        $summary = [];
+        $entitiesRepaired = 0;
+        $projectUpdates = 0;
+        $modified = false;
+
+        foreach ($targets as $slug => $project) {
+            $entities = $project['entities'] ?? [];
+            if (!\is_array($entities)) {
+                $entities = [];
+            }
+
+            $entitySummaries = [];
+            $projectModified = false;
+
+            foreach ($entities as $entitySlug => $entity) {
+                if (!\is_array($entity)) {
+                    continue;
+                }
+
+                $versions = $entity['versions'] ?? [];
+                if (!\is_array($versions)) {
+                    $versions = [];
+                }
+
+                $actions = [];
+
+                if ($versions === []) {
+                    if (($entity['active_version'] ?? null) !== null) {
+                        $entity['active_version'] = null;
+                        $actions[] = 'cleared_active_version';
+                    }
+                    if (($entity['status'] ?? 'inactive') !== 'inactive') {
+                        $entity['status'] = 'inactive';
+                        $actions[] = 'status_inactive';
+                    }
+                } else {
+                    $activeVersion = $entity['active_version'] ?? null;
+
+                    if ($activeVersion === null || !isset($versions[$activeVersion])) {
+                        $candidate = null;
+                        foreach ($versions as $key => $record) {
+                            if (($record['status'] ?? 'inactive') === 'active') {
+                                $candidate = (string) $key;
+                                break;
+                            }
+                        }
+
+                        if ($candidate === null) {
+                            $keys = \array_keys($versions);
+                            \usort($keys, static fn ($a, $b) => (int) $b <=> (int) $a);
+                            $candidate = (string) ($keys[0] ?? '');
+                        }
+
+                        if ($candidate !== null && $candidate !== '') {
+                            $entity['active_version'] = $candidate;
+                            $activeVersion = $candidate;
+                            $actions[] = 'active_version_reset';
+                        }
+                    }
+
+                    foreach ($versions as $key => &$record) {
+                        if (!\is_array($record)) {
+                            continue;
+                        }
+
+                        $shouldBe = ((string) $key === (string) ($entity['active_version'] ?? null)) ? 'active' : 'inactive';
+
+                        if (($record['status'] ?? $shouldBe) !== $shouldBe) {
+                            $record['status'] = $shouldBe;
+                            $actions[] = 'version_status_adjusted';
+                        }
+
+                        if (!isset($record['committed_at'])) {
+                            $record['committed_at'] = $timestamp;
+                            $actions[] = 'committed_at_filled';
+                        }
+                    }
+                    unset($record);
+
+                    $entity['versions'] = $versions;
+
+                    $hasActive = false;
+                    foreach ($versions as $record) {
+                        if (($record['status'] ?? 'inactive') === 'active') {
+                            $hasActive = true;
+                            break;
+                        }
+                    }
+
+                    $desiredStatus = $hasActive ? 'active' : 'inactive';
+                    if (($entity['status'] ?? $desiredStatus) !== $desiredStatus) {
+                        $entity['status'] = $desiredStatus;
+                        $actions[] = 'entity_status_align';
+                    }
+                }
+
+                if (!isset($entity['created_at']) && $versions !== []) {
+                    $times = \array_column($versions, 'committed_at');
+                    $times = \array_filter($times, static fn ($value) => \is_string($value) && $value !== '');
+                    if ($times !== []) {
+                        \sort($times);
+                        $entity['created_at'] = $times[0];
+                        $actions[] = 'created_at_filled';
+                    } else {
+                        $entity['created_at'] = $timestamp;
+                        $actions[] = 'created_at_default';
+                    }
+                }
+
+                if (!isset($entity['updated_at']) && $versions !== []) {
+                    $times = \array_column($versions, 'committed_at');
+                    $times = \array_filter($times, static fn ($value) => \is_string($value) && $value !== '');
+                    if ($times !== []) {
+                        \sort($times);
+                        $entity['updated_at'] = $times[\count($times) - 1];
+                        $actions[] = 'updated_at_filled';
+                    }
+                }
+
+                if ($actions !== []) {
+                    $brain['projects'][$slug]['entities'][$entitySlug] = $entity;
+                    $entitySummaries[] = [
+                        'slug' => $entitySlug,
+                        'actions' => \array_values(\array_unique($actions)),
+                    ];
+                    ++$entitiesRepaired;
+                    $projectModified = true;
+                }
+            }
+
+            if ($projectModified) {
+                $brain['projects'][$slug]['updated_at'] = $timestamp;
+                $projectUpdates++;
+                $modified = true;
+            }
+
+            $summary[] = [
+                'slug' => $slug,
+                'entities' => $entitySummaries,
+            ];
+        }
+
+        if (!$modified || $dryRun) {
+            return [
+                'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+                'dry_run' => $dryRun,
+                'projects' => $summary,
+                'entities_repaired' => $entitiesRepaired,
+                'projects_updated' => $projectUpdates,
+            ];
+        }
+
+        $brain['meta']['updated_at'] = $timestamp;
+        $this->activeBrainData = $brain;
+        $this->persistActiveBrain();
+
+        $this->events->emit('brain.repaired', [
+            'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+            'entities_repaired' => $entitiesRepaired,
+            'projects_updated' => $projectUpdates,
+        ]);
+
+        AavionDB::debugLog('Brain repaired.', [
+            'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+            'entities_repaired' => $entitiesRepaired,
+            'projects_updated' => $projectUpdates,
+            'source' => 'storage:brain',
+        ]);
+
+        return [
+            'project' => $projectSlug !== null ? $this->normalizeKey($projectSlug) : null,
+            'dry_run' => false,
+            'projects' => $summary,
+            'entities_repaired' => $entitiesRepaired,
+            'projects_updated' => $projectUpdates,
         ];
     }
 
@@ -1605,7 +2069,7 @@ final class BrainRepository
      *
      * @return array<string, mixed>
      */
-    public function backupBrain(?string $slug = null, ?string $label = null): array
+    public function backupBrain(?string $slug = null, ?string $label = null, bool $compress = false): array
     {
         if ($slug === null || $slug === '') {
             $slug = $this->activeBrain() ?? $this->determineActiveBrainSlug();
@@ -1621,12 +2085,18 @@ final class BrainRepository
         }
 
         $labelPart = '';
+        $normalizedLabel = null;
         if ($label !== null && $label !== '') {
-            $labelPart = '-' . $this->sanitizeBackupLabel($label);
+            $candidateLabel = $this->sanitizeBackupLabel($label);
+            if ($candidateLabel !== '') {
+                $normalizedLabel = $candidateLabel;
+                $labelPart = '--' . $normalizedLabel;
+            }
         }
 
         $timestamp = (new DateTimeImmutable())->format('Ymd_His');
-        $destination = $this->paths->userBackups() . DIRECTORY_SEPARATOR . \sprintf('%s%s-%s.brain', $slug, $labelPart, $timestamp);
+        $filename = \sprintf('%s%s-%s.brain', $slug, $labelPart, $timestamp);
+        $destination = $this->paths->userBackups() . DIRECTORY_SEPARATOR . $filename;
 
         AavionDB::debugLog('Creating brain backup.', [
             'slug' => $slug,
@@ -1635,10 +2105,20 @@ final class BrainRepository
             'label' => $label,
             'source_brain' => $isSystem ? 'system' : 'user',
             'source' => 'storage:brain',
+            'compress' => $compress,
         ]);
 
         if (!@\copy($source, $destination)) {
             throw new StorageException('Unable to create brain backup.');
+        }
+
+        $compressed = false;
+
+        if ($compress) {
+            $compressedPath = $this->compressBackup($destination);
+            $destination = $compressedPath;
+            $compressed = true;
+            $filename = \basename($destination);
         }
 
         $bytes = @\filesize($destination) ?: null;
@@ -1648,6 +2128,7 @@ final class BrainRepository
             'path' => $destination,
             'bytes' => $bytes,
             'is_system' => $isSystem,
+            'compressed' => $compressed,
         ]);
 
         AavionDB::debugLog('Brain backup created.', [
@@ -1655,13 +2136,17 @@ final class BrainRepository
             'path' => $destination,
             'bytes' => $bytes,
             'source' => 'storage:brain',
+            'compressed' => $compressed,
         ]);
 
         return [
             'slug' => $slug,
             'path' => $destination,
+            'filename' => $filename,
             'bytes' => $bytes,
             'created_at' => (new DateTimeImmutable())->format(DATE_ATOM),
+            'label' => $normalizedLabel,
+            'compressed' => $compressed,
         ];
     }
 
@@ -1718,6 +2203,214 @@ final class BrainRepository
                 'last_failure' => $this->integrityState['last_failure'] ?? null,
             ],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function listBackups(?string $slug = null): array
+    {
+        $directory = $this->paths->userBackups();
+        $pattern = $directory . DIRECTORY_SEPARATOR . '*.brain*';
+        $files = \glob($pattern) ?: [];
+
+        $normalizedSlug = null;
+        if ($slug !== null && $slug !== '' && $slug !== '*') {
+            $normalizedSlug = $this->sanitizeBrainSlug($slug);
+        }
+
+        $entries = [];
+
+        foreach ($files as $file) {
+            if (!\is_file($file)) {
+                continue;
+            }
+
+            $meta = $this->backupMetadataFromPath($file);
+            if ($meta === null) {
+                continue;
+            }
+
+            if ($normalizedSlug !== null && $meta['slug'] !== $normalizedSlug) {
+                continue;
+            }
+
+            $entries[] = $meta;
+        }
+
+        \usort($entries, static function (array $a, array $b): int {
+            return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+        });
+
+        return [
+            'count' => \count($entries),
+            'backups' => $entries,
+        ];
+    }
+
+    public function pruneBackups(?string $slug = null, ?int $keep = null, ?int $olderThanDays = null, bool $dryRun = false): array
+    {
+        $keep = $keep !== null ? \max(0, $keep) : null;
+        $olderThanSeconds = null;
+        if ($olderThanDays !== null) {
+            $olderThanSeconds = \max(0, $olderThanDays) * 86400;
+        }
+
+        if ($keep === null && $olderThanSeconds === null) {
+            return [
+                'dry_run' => $dryRun,
+                'removed' => [],
+                'count' => 0,
+                'skipped' => true,
+                'reason' => 'No retention criteria (keep/older-than) supplied.',
+            ];
+        }
+
+        $all = $this->listBackups($slug === '*' ? null : $slug);
+        $backups = $all['backups'];
+
+        $now = time();
+        $grouped = [];
+
+        foreach ($backups as $meta) {
+            $groupSlug = $meta['slug'] ?? 'unknown';
+            $grouped[$groupSlug][] = $meta;
+        }
+
+        $removed = [];
+
+        foreach ($grouped as $groupSlug => $items) {
+            \usort($items, static function (array $a, array $b): int {
+                return strcmp($b['created_at'] ?? '', $a['created_at'] ?? '');
+            });
+
+            $eligible = [];
+
+            foreach ($items as $index => $meta) {
+                $ageOk = true;
+                if ($olderThanSeconds !== null) {
+                    $createdAt = isset($meta['created_at']) ? strtotime($meta['created_at']) : false;
+                    if ($createdAt === false) {
+                        $createdAt = @filemtime($meta['path'] ?? '') ?: $now;
+                    }
+
+                    if (($now - $createdAt) < $olderThanSeconds) {
+                        $ageOk = false;
+                    }
+                }
+
+                $keepOk = true;
+                if ($keep !== null && $index < $keep) {
+                    $keepOk = false;
+                }
+
+                if ($ageOk && $keepOk) {
+                    $eligible[] = $meta;
+                }
+            }
+
+            foreach ($eligible as $meta) {
+                $removed[] = $meta;
+
+                if ($dryRun) {
+                    continue;
+                }
+
+                $path = $meta['path'] ?? null;
+                if ($path !== null && \is_file($path)) {
+                    @\unlink($path);
+                }
+            }
+        }
+
+        return [
+            'dry_run' => $dryRun,
+            'removed' => $removed,
+            'count' => \count($removed),
+        ];
+    }
+
+    public function restoreBrain(string $backup, ?string $targetSlug = null, bool $activate = false, bool $overwrite = false): array
+    {
+        $backupPath = $this->resolveBackupPath($backup);
+
+        if (!\is_file($backupPath)) {
+            throw new StorageException(\sprintf('Backup file "%s" not found.', $backup));
+        }
+
+        $metadata = $this->backupMetadataFromPath($backupPath);
+        if ($metadata === null) {
+            throw new StorageException('Backup filename is not recognised.');
+        }
+
+        $sourceSlug = $metadata['slug'];
+        $targetSlug = $targetSlug !== null && $targetSlug !== ''
+            ? $this->sanitizeBrainSlug($targetSlug)
+            : $sourceSlug;
+
+        $isSystem = strtolower($sourceSlug) === 'system';
+
+        if ($isSystem && $targetSlug !== 'system') {
+            throw new StorageException('System brain backups can only be restored to the system brain.');
+        }
+
+        if ($targetSlug === 'system' && !$isSystem) {
+            throw new StorageException('User brain backups cannot be restored into the system brain.');
+        }
+
+        $destination = $isSystem ? $this->paths->systemBrain() : $this->paths->userBrain($targetSlug);
+
+        if (!$overwrite && \is_file($destination)) {
+            throw new StorageException(\sprintf('Brain "%s" already exists. Use --overwrite=1 to replace it.', $targetSlug));
+        }
+
+        $tempSource = $backupPath;
+        $tempCreated = false;
+
+        if (!empty($metadata['compressed'])) {
+            $tempSource = $this->decompressBackupToTemp($backupPath);
+            $tempCreated = true;
+        }
+
+        if (!@\copy($tempSource, $destination)) {
+            if ($tempCreated) {
+                @\unlink($tempSource);
+            }
+            throw new StorageException('Failed to restore brain backup.');
+        }
+
+        if ($tempCreated) {
+            @\unlink($tempSource);
+        }
+
+        $this->events->emit('brain.backup.restored', [
+            'backup' => $backupPath,
+            'target' => $targetSlug,
+            'activate' => $activate,
+            'overwrite' => $overwrite,
+        ]);
+
+        AavionDB::debugLog('Brain backup restored.', [
+            'backup' => $backupPath,
+            'target' => $targetSlug,
+            'activate' => $activate,
+            'overwrite' => $overwrite,
+            'source' => 'storage:brain',
+        ]);
+
+        if ($isSystem) {
+            $this->systemBrain = null;
+            $this->ensureSystemBrain();
+        } else {
+            $this->activeBrainData = null;
+            $this->activeBrainPath = null;
+        }
+
+        if ($activate && !$isSystem) {
+            $this->setActiveBrain($targetSlug);
+        }
+
+        return $this->brainReport($targetSlug);
     }
 
     /**
@@ -3287,6 +3980,114 @@ final class BrainRepository
         ];
     }
 
+    /**
+     * @param array<string, mixed> $brain
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function resolveProjectTargets(array $brain, ?string $projectSlug, bool $writeAccess): array
+    {
+        $projects = $brain['projects'] ?? [];
+        if (!\is_array($projects)) {
+            $projects = [];
+        }
+
+        if ($projectSlug !== null) {
+            $slug = $this->normalizeKey($projectSlug);
+
+            if (!isset($projects[$slug]) || !\is_array($projects[$slug])) {
+                throw new StorageException(\sprintf('Project "%s" not found in active brain.', $projectSlug));
+            }
+
+            if ($writeAccess) {
+                $this->assertWriteAllowed($slug);
+            } else {
+                $this->assertReadAllowed($slug);
+            }
+
+            return [$slug => $projects[$slug]];
+        }
+
+        $targets = [];
+        foreach ($projects as $slug => $project) {
+            if (!\is_array($project)) {
+                continue;
+            }
+
+            if ($writeAccess) {
+                $this->assertWriteAllowed($slug);
+            } else {
+                $this->assertReadAllowed($slug);
+            }
+
+            $targets[$slug] = $project;
+        }
+
+        return $targets;
+    }
+
+    /**
+     * @param array<string, mixed> $brain
+     */
+    private function removeCommitReference(array &$brain, string $project, string $entity, string $versionKey, ?array $record = null): int
+    {
+        if (!isset($brain['commits']) || !\is_array($brain['commits'])) {
+            $brain['commits'] = [];
+        }
+
+        $removed = 0;
+
+        if ($record !== null && isset($record['commit']) && \is_string($record['commit']) && $record['commit'] !== '') {
+            if (isset($brain['commits'][$record['commit']])) {
+                unset($brain['commits'][$record['commit']]);
+                ++$removed;
+            }
+        }
+
+        foreach ($brain['commits'] as $hash => $commitMeta) {
+            if (!\is_array($commitMeta)) {
+                continue;
+            }
+
+            if (($commitMeta['project'] ?? null) === $project
+                && ($commitMeta['entity'] ?? null) === $entity
+                && (string) ($commitMeta['version'] ?? '') === (string) $versionKey
+            ) {
+                if (isset($brain['commits'][$hash])) {
+                    unset($brain['commits'][$hash]);
+                    ++$removed;
+                }
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * @param array<string, mixed> $brain
+     */
+    private function findCommitHashForVersion(array $brain, string $project, string $entity, string $version): ?string
+    {
+        if (!isset($brain['commits']) || !\is_array($brain['commits'])) {
+            return null;
+        }
+
+        foreach ($brain['commits'] as $hash => $commitMeta) {
+            if (!\is_array($commitMeta)) {
+                continue;
+            }
+
+            if (($commitMeta['project'] ?? null) === $project
+                && ($commitMeta['entity'] ?? null) === $entity
+                && (string) ($commitMeta['version'] ?? '') === (string) $version
+            ) {
+                return (string) $hash;
+            }
+        }
+
+        return null;
+    }
+
     private function resolveEntityVersionKey(array $brain, string $project, string $entitySlug, array $entity, string $reference): ?string
     {
         $reference = trim($reference);
@@ -3343,6 +4144,137 @@ final class BrainRepository
         }
 
         return null;
+    }
+
+    private function compressBackup(string $path): string
+    {
+        $destination = $path . '.gz';
+
+        $input = @fopen($path, 'rb');
+        if ($input === false) {
+            throw new StorageException('Unable to read backup for compression.');
+        }
+
+        $gz = @gzopen($destination, 'wb9');
+        if ($gz === false) {
+            fclose($input);
+            throw new StorageException('Unable to create compressed backup.');
+        }
+
+        while (!feof($input)) {
+            $chunk = fread($input, 8192);
+            if ($chunk === false) {
+                fclose($input);
+                gzclose($gz);
+                @unlink($destination);
+                throw new StorageException('Failed to read backup during compression.');
+            }
+
+            if (gzwrite($gz, $chunk) === false) {
+                fclose($input);
+                gzclose($gz);
+                @unlink($destination);
+                throw new StorageException('Failed to write compressed backup.');
+            }
+        }
+
+        fclose($input);
+        gzclose($gz);
+
+        @unlink($path);
+
+        return $destination;
+    }
+
+    private function decompressBackupToTemp(string $path): string
+    {
+        $input = @gzopen($path, 'rb');
+        if ($input === false) {
+            throw new StorageException('Unable to open compressed backup.');
+        }
+
+        $temp = tempnam(sys_get_temp_dir(), 'aaviondb-restore-');
+        if ($temp === false) {
+            gzclose($input);
+            throw new StorageException('Unable to allocate temporary file for restore.');
+        }
+
+        $output = @fopen($temp, 'wb');
+        if ($output === false) {
+            gzclose($input);
+            @unlink($temp);
+            throw new StorageException('Unable to write temporary restore file.');
+        }
+
+        while (!gzeof($input)) {
+            $chunk = gzread($input, 8192);
+            if ($chunk === false) {
+                gzclose($input);
+                fclose($output);
+                @unlink($temp);
+                throw new StorageException('Failed to read compressed backup.');
+            }
+
+            if (fwrite($output, $chunk) === false) {
+                gzclose($input);
+                fclose($output);
+                @unlink($temp);
+                throw new StorageException('Failed to write decompressed backup.');
+            }
+        }
+
+        gzclose($input);
+        fclose($output);
+
+        return $temp;
+    }
+
+    private function resolveBackupPath(string $identifier): string
+    {
+        $base = $this->paths->userBackups();
+
+        if (\is_file($identifier)) {
+            return $identifier;
+        }
+
+        $candidate = $base . DIRECTORY_SEPARATOR . ltrim($identifier, DIRECTORY_SEPARATOR);
+        if (\is_file($candidate)) {
+            return $candidate;
+        }
+
+        return $identifier;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function backupMetadataFromPath(string $path): ?array
+    {
+        $filename = basename($path);
+
+        if (!\preg_match('/^(?P<slug>[a-z0-9_.-]+)(?:--(?P<label>[a-z0-9_.-]+))?-(?P<timestamp>\d{8}_\d{6})\.brain(?P<ext>\.gz)?$/', $filename, $matches)) {
+            return null;
+        }
+
+        $createdAt = DateTimeImmutable::createFromFormat('Ymd_His', $matches['timestamp']);
+        $createdIso = $createdAt !== false ? $createdAt->format(DATE_ATOM) : null;
+
+        if ($createdIso === null) {
+            $createdIso = date(DATE_ATOM, @filemtime($path) ?: time());
+        }
+
+        $bytes = @filesize($path) ?: null;
+
+        return [
+            'slug' => $this->sanitizeBrainSlug($matches['slug']),
+            'label' => isset($matches['label']) && $matches['label'] !== '' ? $matches['label'] : null,
+            'timestamp' => $matches['timestamp'],
+            'created_at' => $createdIso,
+            'bytes' => $bytes,
+            'path' => $path,
+            'filename' => $filename,
+            'compressed' => isset($matches['ext']) && $matches['ext'] === '.gz',
+        ];
     }
 
     private function timestamp(): string

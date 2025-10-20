@@ -4,8 +4,9 @@
 
 ## Responsibilities
 - Manage brain discovery, activation, initialisation, and backups.
+- Provide backup lifecycle management (snapshot, listing, pruning, restore).
 - Expose configuration helpers (system vs user brains) for other modules.
-- Publish integrity snapshots and maintenance hooks (validation, future cleanup).
+- Publish integrity snapshots and maintenance hooks (validation, cleanup, compaction, repair).
 
 ## Commands
 - `brains` – List system and user brains with metadata (type, size, entity versions, active flag).
@@ -15,23 +16,28 @@
 - `brain info [slug]` – Return detailed information for the requested brain (defaults to active brain).
 - `brain validate [slug]` – Run integrity diagnostics (checksum, last write/failure metadata).
 - `brain delete <slug>` – Permanently delete a non-active user brain.
-- `brain cleanup <project> [entity] [keep=0]` – Purge inactive versions for the given project (optional entity scope, preserve the most recent `keep` versions).
+- `brain cleanup <project> [entity] [keep=0] [--dry-run=1]` – Purge inactive versions for the given project (optional entity scope, preview mode, preserve the most recent `keep` versions).
+- `brain compact [project] [--dry-run=1]` – Rebuild commit indexes and reorder entity version arrays for the selected project(s).
+- `brain repair [project] [--dry-run=1]` – Repair entity metadata inconsistencies (active versions, statuses, timestamps).
+- `brain backups [slug]` – List stored backup files (optional slug filter).
+- `brain backup prune <slug|*> [--keep=10] [--older-than=30] [--dry-run=1]` – Delete backups using retention/age policies.
+- `brain restore <backup> [target] [--overwrite=0] [--activate=0]` – Restore a brain from a backup file, optionally activating it afterwards.
 
 ## Call Flow
-- `system/modules/brain/module.php` constructs `AavionDB\Modules\Brain\BrainAgent` and calls `BrainAgent::register()`.  
-- `BrainAgent::registerParser()` rewrites statements like `brain init foo` or bare `brains` into canonical command names and merges parameters before dispatch.  
-- Each command maps to a dedicated method: `brainInitCommand()`, `brainSwitchCommand()`, `brainBackupCommand()`, `brainInfoCommand()`, `brainValidateCommand()`, `brainDeleteCommand()`, and `brainCleanupCommand()`. All return `CommandResponse` objects.  
-- The handlers delegate to `BrainRepository` operations (`createBrain`, `setActiveBrain`, `backupBrain`, `brainReport`, `integrityReportFor`, `deleteBrain`, `purgeInactiveEntityVersions`) and emit debug logs via `ModuleContext::debug()` for troubleshooting.
+- `system/modules/brain/module.php` constructs `AavionDB\Modules\Brain\BrainAgent` and calls `BrainAgent::register()`.
+- `BrainAgent::registerParser()` rewrites statements like `brain init foo` or bare `brains` into canonical command names and merges parameters before dispatch.
+- Each command maps to a dedicated method: `brainInitCommand()`, `brainSwitchCommand()`, `brainBackupCommand()`, `brainBackupsCommand()`, `brainBackupPruneCommand()`, `brainInfoCommand()`, `brainValidateCommand()`, `brainDeleteCommand()`, `brainCleanupCommand()`, `brainCompactCommand()`, `brainRepairCommand()`, and `brainRestoreCommand()`. All return `CommandResponse` objects.
+- The handlers delegate to `BrainRepository` operations (`createBrain`, `setActiveBrain`, `backupBrain`, `listBackups`, `pruneBackups`, `brainReport`, `integrityReportFor`, `deleteBrain`, `purgeInactiveEntityVersions`, `compactBrain`, `repairBrain`, `restoreBrain`) and emit debug logs via `ModuleContext::debug()` for troubleshooting.
 
 ## Key Classes & Collaborators
-- `AavionDB\Modules\Brain\BrainAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – performs actual filesystem mutations and reporting.  
+- `AavionDB\Modules\Brain\BrainAgent` – parser + command registrar.
+- `AavionDB\Storage\BrainRepository` – performs actual filesystem mutations and reporting.
 - `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, diagnostics hooks.  
 - `AavionDB\Core\CommandResponse` – wraps every handler result in the unified schema.  
 - `PathLocator` – ensures backup directories exist (invoked inside repository helpers).
 
 ## Implementation Notes
-- Module lives in `system/modules/brain` and leverages helpers in `BrainRepository` (`listBrains`, `createBrain`, `setActiveBrain`, `backupBrain`, `deleteBrain`, `brainReport`, `integrityReportFor`, `purgeInactiveEntityVersions`). The cleanup command now honours a `keep` threshold to retain the most recent versions.
+- Module lives in `system/modules/brain` and leverages helpers in `BrainRepository` (`listBrains`, `createBrain`, `setActiveBrain`, `backupBrain`, `deleteBrain`, `brainReport`, `integrityReportFor`, `purgeInactiveEntityVersions`, `compactBrain`, `repairBrain`). Cleanup supports keep-threshold previews (`--dry-run`), compaction rebuilds commit maps, and repair realigns entity metadata.
 
 ## Examples
 
@@ -74,5 +80,5 @@ $response = AavionDB::run('brain validate', ['slug' => 'default']);
 - Diagnostics include footprint metrics (bytes + entity-version count) consumed by CoreAgent `status`.
 
 ## Outstanding Tasks
-- [ ] Extend cleanup with retention policies / dry-run previews.
-- [ ] Add PHPUnit coverage for brain lifecycle, deletion, and cleanup edge cases.
+- [ ] Add additional retention policies (e.g., per-entity thresholds) and compaction metrics.
+- [ ] Add PHPUnit coverage for brain lifecycle, deletion, and maintenance edge cases.

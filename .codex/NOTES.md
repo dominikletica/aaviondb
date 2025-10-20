@@ -16,7 +16,7 @@
 ### Module Checklist
 - **Shared tasks**: [ ] Standardise manifest/module scaffolding for remaining modules; [ ] emit diagnostics + logging hooks; [ ] add PHPUnit coverage once prototype stabilises.
 - **CoreAgent (`core`)**: [x] Implement `status`, `diagnose`, `help` with metadata.
-- **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [ ] add compaction/repair utilities; [ ] optional cleanup command for inactive versions.
+- **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [x] add compaction/repair utilities; [x] optional cleanup command for inactive versions (with dry-run).
 - **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [ ] cascade coordination with EntityAgent.
 - **EntityAgent (`entity`)**: [x] CRUD/version commands with selectors; [ ] cascade coordination with ProjectAgent.
 - **EntityAgent (`entity`)**: [x] Support incremental `save` merges (partial payload updates with empty values deleting fields, schema validation after merge); [x] allow schema selectors to target historical revisions (`fieldset@13` / `#hash`) and evaluate merges against non-active entity versions.
@@ -33,7 +33,7 @@
 - **SchemaAgent (`schema`)**: [x] Baseline list/show/lint commands; [x] create/update/delete fieldset helpers; [ ] Studio integration hooks; [ ] cached lint results & metrics.
 
 ### Roadmap to Alpha (pre-tests)
-1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs.
+1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
 2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation.
 3. **Configuration upgrades** – Add bulk import/export commands and config audit logging.
 4. **Export destinations & profiles** – Introduce preset destinations (disk/response), scheduler hooks, and schema-aware/LLM profiles.
@@ -153,4 +153,6 @@
 - Split documentation into dedicated user and developer handbooks; added modular chapters for user workflows and refreshed developer index/partials.
 - Normalised partial status tags, updated architecture/REST/logging references, and aligned README with the new documentation split.
 - Recorded references in AGENTS/Manual to keep classmap and commands in sync; ensured NOTE log stays current.
-- **Next:** resume roadmap Step 1 (brain maintenance utilities) once documentation stabilisation is confirmed.
+- Delivered brain maintenance utilities: `brain cleanup` now supports dry-run previews with commit counts, new `brain compact` rebuilds commit indexes/orders, and `brain repair` realigns entity metadata; README + manuals + command references updated.
+- Added backup inventory/prune/restore support with optional gzip compression and updated CLI/REST documentation.
+- **Next:** move to Roadmap Step 2 (project/entity cascade hooks) after verifying maintenance commands in practice.

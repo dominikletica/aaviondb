@@ -13,8 +13,13 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `reset` – Reset authentication state to bootstrap defaults (`auth reset`).
     - `revoke` – Revoke a token by plain value or preview (`auth revoke <token|preview>`).
 - `brain`
-    - `backup` – Create a backup snapshot (`brain backup [slug] [label=name]`).
-    - `cleanup` – Purge inactive versions with optional entity filter (`brain cleanup <project> [entity] [keep=0]`).
+    - `backup` – Create a backup snapshot (`brain backup [slug] [label=name] [--compress=1]`).
+    - `backups` – List stored backups (`brain backups [slug]`).
+    - `backup prune` – Remove backups using retention rules (`brain backup prune <slug|*> [--keep=10] [--older-than=30] [--dry-run=1]`).
+    - `cleanup` – Purge inactive versions (`brain cleanup <project> [entity] [keep=0] [--dry-run=1]`).
+    - `compact` – Rebuild commit indexes and reorder entity versions (`brain compact [project] [--dry-run=1]`).
+    - `repair` – Repair entity metadata (active version, statuses, timestamps) (`brain repair [project] [--dry-run=1]`).
+    - `restore` – Restore from a backup file (`brain restore <backup> [target] [--overwrite=0] [--activate=0]`).
     - `delete` – Delete a non-active user brain (`brain delete <slug>`).
     - `info` – Display brain metadata (`brain info [slug]`).
     - `init` – Create a new brain and optionally activate it (`brain init <slug> [switch=1]`).

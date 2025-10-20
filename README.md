@@ -64,11 +64,16 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `brains` | List all available brains (system + user). |
 | `brain init <slug> [switch=1]` | Create a new user brain and optionally activate it. |
 | `brain switch <slug>` | Switch the active brain. |
-| `brain backup [slug] [label=name]` | Create a backup for the specified (or active) brain. |
+| `brain backup [slug] [label=name] [--compress=1]` | Create a backup for the specified (or active) brain (optionally gzip-compressed). |
+| `brain backups [slug]` | List stored backups (optionally filter by brain slug). |
+| `brain backup prune <slug|*> [--keep=10] [--older-than=30] [--dry-run=1]` | Remove backups according to retention rules (preview with `--dry-run`). |
 | `brain info [slug]` | Show metadata for the active or specified brain. |
 | `brain validate [slug]` | Run integrity diagnostics. |
 | `brain delete <slug>` | Permanently delete a non-active brain. |
-| `brain cleanup <project> [entity] [keep=0]` | Purge inactive versions, optionally preserving the newest `keep` versions. |
+| `brain cleanup <project> [entity] [keep=0] [--dry-run=1]` | Purge inactive versions (preview with `--dry-run`, optionally preserve the newest `keep` versions). |
+| `brain compact [project] [--dry-run=1]` | Rebuild commit indexes and reorder entity versions for faster lookups. |
+| `brain repair [project] [--dry-run=1]` | Fix entity metadata (active version, status, timestamps) when inconsistencies are detected. |
+| `brain restore <backup> [target] [--overwrite=0] [--activate=0]` | Restore a brain from a backup file (optionally activate immediately). |
 
 ### Export Commands
 | Command | Description |

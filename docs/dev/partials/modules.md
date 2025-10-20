@@ -131,8 +131,8 @@ return [
   - Manage bootstrap checks
 - **`BrainAgent` (`brain`)** – Brain lifecycle management
   - List/init/switch brains
-  - Handle backups and integrity reports
-  - Expose brain config helpers and maintenance tooling (validation/repair)
+  - Handle backups (snapshot, listing, pruning, restore) and integrity reports
+  - Expose brain config helpers and maintenance tooling (cleanup previews, compaction, repair)
 - **`ProjectAgent` (`project`)** – Project indexing and metadata
   - Create/list/remove projects
   - Update project metadata (title/description)

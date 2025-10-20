@@ -85,4 +85,18 @@ php cli.php "log rotate keep=5"
 
 ---
 
+## Brain Maintenance
+
+- `brain backup [slug] [label="nightly"] [--compress=1]` – Create a snapshot (use `--compress` to save space).
+- `brain backups [slug]` – List stored backups; omit the slug to see everything.
+- `brain backup prune <slug|*> [--keep=10] [--older-than=30] [--dry-run=1]` – Remove backups via retention rules (keep latest N or delete older than N days).
+- `brain restore <backup> [target] [--overwrite=0] [--activate=0]` – Restore a backup into a brain (preview target slug first).
+- `brain cleanup <project> [entity] [keep=0] [--dry-run=1]` – Remove old inactive versions (preview with `--dry-run`).
+- `brain compact [project] [--dry-run=1]` – Rebuild commit indexes and tidy version ordering for faster lookups.
+- `brain repair [project] [--dry-run=1]` – Fix entity metadata (active versions, statuses, timestamps) when inconsistencies appear.
+
+Use these commands after large imports, manual edits, or whenever diagnostics highlight mismatched metadata.
+
+---
+
 Next steps: [Performance & Cache](performance.md) keeps the system fast, while the [Troubleshooting & FAQ](troubleshooting.md) section lists common pitfalls.
