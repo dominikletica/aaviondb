@@ -14,23 +14,23 @@
 - [x] Instrument rate limiting telemetry & admin bypass tooling for `SecurityManager`.
 
 ### Module Checklist
-- **Shared tasks**: [ ] Standardise manifest/module scaffolding für verbleibende Module; [ ] konsistente Diagnostics-/Logging-Hooks etablieren; [ ] PHPUnit-Coverage planen, sobald Feature-Implementierung abgeschlossen ist.
-- **CoreAgent (`core`)**: [x] Implement `status`, `diagnose`, `help` with metadata; [ ] erweitertes `help`-Listing (inkl. Modul-Metadaten); [ ] PHPUnit-Coverage für Status/Help/Fehlerpfade.
-- **BrainAgent (`brain`)**: [x] Core commands (`brains`, `brain init/switch/backup/info/validate`); [x] Compaction/Repair Utilities; [x] Cleanup mit Dry-Run; [ ] Zusätzliche Retention-Policies/Compaction-Metriken; [ ] PHPUnit-Coverage (Lifecycle, Deletion, Maintenance).
-- **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata update support; [x] cascade coordination mit EntityAgent; [x] project restore/unarchive command; [ ] erweiterte Cascade-Optionen (Auto-Cleanup/Benachrichtigungen); [ ] PHPUnit-Coverage (Lifecycle/Restore).
-- **EntityAgent (`entity`)**: [x] CRUD/version commands; [x] Cascade-Koordination; [x] Hierarchie-Auflistung & `entity move`; [x] Inkrementelle `save`-Merges inkl. Schema-Validierung/Historien; [ ] Hierarchie-Diagnostik & Subtree-Helfer; [ ] Erweiterte Unterstützung für historische Schema-Referenzen; [ ] PHPUnit-Coverage (Schema/Hieararchie-Kantenfälle).
-- **ConfigAgent (`config`)**: [x] `set`/`get` commands; [ ] Datei-/Payload-Import/Export; [ ] Audit-Trail für Änderungen; [ ] Namespaced-Key-Vorschläge & Validierungen.
-- **ExportAgent (`export`)**: [x] Parser + CLI exports for single/multi projects; [x] Preset-driven selection & payload transforms; [x] RegEx support for preset payload filters; [ ] Export destinations & scheduler hooks; [ ] Advanced export profiles (LLM/schema aware).
-- **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] Audit-Logging & Bootstrap-Guidance; [ ] Scoped Key/Role Management; [ ] PHPUnit-Coverage (Grant/Revoke/Reset).
-- **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] Rolling-Request-Telemetrie; [ ] Scheduler/Log-Automatisierung für Wartungsfenster; [ ] Batched/Async Hooks.
-- **UiAgent (`ui`)**: [ ] Studio-Integration; [ ] optionale Konsole; [ ] Dokumentation zu Assets & Sicherheitsrichtlinien für externe UIs.
-- **LogAgent (`log`)**: [x] Tail/framework log filtering; [x] rotation/cleanup commands; [ ] log storage abstraction.
-- **EventsAgent (`events`)**: [x] Listener diagnostics; [ ] Ereignistelemetrie (recent events, emit counter); [ ] Streaming/Subscription Endpunkte.
-- **SchedulerAgent (`scheduler`)**: [x] Task CRUD + log, `cron` execution, REST w/out auth; [ ] Dry-Run/Preview; [ ] Cron-Expression/Prioritäten; [ ] PHPUnit-Coverage.
-- **CacheAgent (`cache`)**: [x] CacheManager wiring with enable/disable/ttl/purge; [x] expose tag-level diagnostics; [ ] Warmup-Utilities für große Exporte.
-- **SecurityAgent (`security`)**: [x] Rate limiting + manual lockdown + purge; [ ] Trusted-Client Whitelists/BYPASS; [ ] Audit Trails.
-- **SchemaAgent (`schema`)**: [x] Baseline list/show/lint; [x] Create/Update/Delete; [ ] Studio-Hooks; [ ] Schema Usage Metrics; [ ] PHPUnit-Coverage.
-- **PresetAgent (`preset`)**: [x] CLI CRUD + import/export; [x] default preset/layout bootstrap; [ ] advanced layout library & Studio UI integration guidance.
+- **Shared tasks**: [ ] Standardise manifest/module scaffolding for remaining modules; [ ] establish consistent diagnostics/logging hooks; [ ] schedule PHPUnit coverage once the feature set stabilises.
+- **CoreAgent (`core`)**: [x] Implement `status`, `diagnose`, `help`; [ ] expand `help` output with richer metadata; [ ] add PHPUnit coverage for status/help/error paths.
+- **BrainAgent (`brain`)**: [x] Core lifecycle commands; [x] compaction/repair utilities; [x] cleanup with dry-run preview; [ ] additional retention metrics; [ ] PHPUnit coverage for lifecycle/deletion/maintenance flows.
+- **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata updates; [x] cascade coordination; [x] restore/unarchive support; [ ] advanced cascade options (auto cleanup/notifications); [ ] PHPUnit coverage for lifecycle/restore.
+- **EntityAgent (`entity`)**: [x] CRUD & selectors; [x] cascade coordination; [x] hierarchy listing/move; [x] incremental `save` merges with schema validation; [ ] hierarchy diagnostics/subtree helpers; [ ] extended historic schema reference support; [ ] PHPUnit coverage (schema/hierarchy edge cases).
+- **ConfigAgent (`config`)**: [x] `set`/`get` commands; [ ] file/payload import-export workflows; [ ] audit log for configuration changes; [ ] namespaced key suggestions and validation.
+- **ExportAgent (`export`)**: [x] CLI/REST exports; [x] preset-driven selection & transforms; [x] regex payload filters; [ ] destinations & scheduler hooks; [ ] advanced LLM/schema profiles.
+- **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] audit logging and bootstrap guidance; [ ] scoped key/role management; [ ] PHPUnit coverage (grant/revoke/reset).
+- **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] rolling request telemetry; [ ] scheduler/log automation for maintenance windows; [ ] batched/async execution hooks.
+- **UiAgent (`ui`)**: [ ] Studio integration hooks; [ ] optional console tooling; [ ] asset and security documentation for external UIs.
+- **LogAgent (`log`)**: [x] Tail/rotate/cleanup; [ ] log storage abstraction; [ ] optional streaming/compression enhancements.
+- **EventsAgent (`events`)**: [x] Listener diagnostics; [ ] emitted-event telemetry; [ ] streaming/subscription endpoints.
+- **SchedulerAgent (`scheduler`)**: [x] Task CRUD + `cron`; [ ] dry-run/preview mode; [ ] cron expression/priority scheduling; [ ] PHPUnit coverage.
+- **CacheAgent (`cache`)**: [x] Enable/disable/ttl/purge; [x] tag diagnostics; [ ] cache warm-up helpers for heavy exports.
+- **SecurityAgent (`security`)**: [x] Rate limiting + lockdown + purge; [ ] trusted-client allow lists/bypass rules; [ ] audit trail integration.
+- **SchemaAgent (`schema`)**: [x] List/show/lint/create/update/delete; [ ] Studio integration hooks; [ ] schema usage metrics; [ ] PHPUnit coverage.
+- **PresetAgent (`preset`)**: [x] CLI CRUD/import/export/vars; [x] default preset/layout bootstrap; [ ] richer preset/layout library and Studio integration guidance.
 
 ### Roadmap to Alpha (pre-tests)
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
@@ -54,17 +54,17 @@
 19. **Testing plan** – Design and implement the PHPUnit coverage plan (execute last).
 
 ### Planned Features
-- Resolver/Query engine for contextual references (see roadmap Step 4 & 16).
-- Advanced export destinations and scheduling integrations (Step 5 & 6).
-- Studio-facing UI/UX enhancements including preset variable discovery and schema editors (Module checklist: UI, Schema, Preset).
-- Version diff utilities, soft-delete policies, und gesicherter Cross-Brain Import/Export (Versioning roadmap).
-- Erweiterte Modul-Lifecycle Features (Capability-Matrix, Hot-Reload, provides/conflicts Negotiation).
-- Parser/Command-Registry Verbesserungen (Rollenkonzepte, strukturierte Metadaten, Command-Batching, Profiling Hooks).
-- Logging/Diagnose Dashboards inkl. Remote-Sinks & Telemetrie Exporte.
-- Eventbus-Erweiterungen (Async-Queues, Listener-Isolation, Streaming/Subscription APIs).
-- Telemetry & observability upgrades (API request counters, event streams, security/audit dashboards).
-- OpenAPI-compatible resource mode for external clients (Roadmap Step 15).
-- AavionStudio: Projekttyp-Metadatum im ProjectAgent, mit dem Studio vorkonfigurierte Presets/Schemas installieren kann (z.B. Autoren-, Coding-, Kunst-, Blog-, Doku-Projekte). Umsetzung erfolgt gemeinsam mit dem Studio-Projekt; Backend muss entsprechende Hooks vorbereiten.
+- Resolver/query engine for contextual references (roadmap steps 4 & 16).
+- Export destinations and scheduler integrations (steps 5 & 6).
+- Studio-focused UI/UX enhancements (preset variable discovery, schema editors).
+- Version diff tooling, soft-delete policies, and signed cross-brain import/export.
+- Extended module lifecycle features (capability matrix, hot reload, provides/conflicts metadata).
+- Parser/command-registry improvements (roles, structured metadata, batching, profiling hooks).
+- Logging/diagnostics dashboards with remote sinks and telemetry exports.
+- Event bus extensions (async queues, listener isolation, streaming/subscription APIs).
+- Telemetry & observability upgrades (API counters, event streams, security/audit dashboards).
+- OpenAPI-compatible resource mode for external clients (roadmap step 15).
+- AavionStudio: project-type metadata so Studio can install preset/schema bundles automatically (authoring, coding, art, blog, docs projects). Backend hooks will land alongside the Studio implementation.
 
 ## 2025-10-17
 
@@ -185,13 +185,12 @@
 
 ## 2025-10-21 – Midday Session
 
-- Dokumentationsstruktur konsolidiert: Root-README verschlankt, vollständige Handbücher unter `docs/README.md`; Querverweise in `AGENTS.md`, `docs/dev/MANUAL.md`, `docs/dev/partials/file-structure.md` angepasst.
-- Detailliertes Export/Preset-Konzept unter `.codex/2025-10-21-IDEAS.md` dokumentiert (Schema `context-unified-v2`, FilterEngine/Resolver-Plan, Command-Platzhalter).
-- Handbücher (User/Dev) und Referenzen (`commands`, `classmap`) mit den neuen Befehlen (`entity move`, payloadlose Reparentings) synchronisiert; erledigte TODOs entfernt.
-- Schema-Persistenz erweitert: `BrainRepository::resolveSchemaDefinition()` liefert Version/Commit; Entities speichern `fieldset_version`, Commits/Listen enthalten diese Metadaten; User-Doku erläutert, dass Saves standardmäßig die bestehende Schemarevision weiterverwenden.
-- Prüfte Module-Dokumentation auf offene Punkte; Roadmap bleibt bei Schritt 3 (Config-Agent – Bulk Import/Export & Audit Logging).
-- Config-Agent modernisiert: Bulk-Updates über JSON-Payload, `get *` alias, Doku & Beispiele aktualisiert. Audit-Logging/Bulk-Import weiterhin offen für Schritt 3.
-- Config-Agent ergänzt um Audit-Events (`config.key.updated/deleted`) inkl. Log-Ausgabe; Bulk-Update Logik schreibt pro Key einen Eintrag.
+- Consolidated documentation: streamlined root README, full handbooks under `docs/README.md`; updated cross-references (`AGENTS.md`, `docs/dev/MANUAL.md`, `docs/dev/partials/file-structure.md`).
+- Documented the export/preset concept in `.codex/2025-10-21-IDEAS.md` (context-unified-v2 layout, FilterEngine/Resolver plan, command placeholders).
+- Synced user/developer manuals and quick references (`commands`, `classmap`) with hierarchy features (`entity move`, payload-less reparenting); cleared resolved TODOs.
+- Extended schema persistence: `BrainRepository::resolveSchemaDefinition()` now returns version/commit; entities store `fieldset_version`; documentation clarifies schema reuse on saves.
+- Reviewed module docs; roadmap remains focused on Config-Agent bulk import/export and audit logging.
+- Enhanced Config-Agent with bulk JSON updates, `get *` alias, revised docs/examples, and audit events (`config.key.updated/deleted`) including logging feedback.
 
 ## 2025-10-21 – Afternoon Session
 
