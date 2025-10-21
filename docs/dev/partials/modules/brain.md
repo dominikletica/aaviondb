@@ -1,6 +1,7 @@
 # BrainAgent Module
 
-> Status: Implemented – brain discovery, activation, and validation commands.
+> Status: Implemented – brain discovery, activation, and validation commands.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Manage brain discovery, activation, initialisation, and backups.
