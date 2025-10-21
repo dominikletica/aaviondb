@@ -1,6 +1,7 @@
 # LogAgent Module
 
-> Status: Implemented – log inspection and rotation for Monolog output.
+> **Status:** Implemented – log inspection and rotation for Monolog output.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Tail `aaviondb.log` with level-based filters.
