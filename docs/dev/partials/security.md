@@ -1,6 +1,6 @@
 # Security & Permissions
 
-> **Status:** Maintained – advanced policies pending.
+> **Status:** Maintained – advanced policies pending.  
 > **Last updated:** 2025-10-20
 
 ## REST Hardening
