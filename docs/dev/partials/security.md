@@ -1,6 +1,7 @@
 # Security & Permissions
 
 > **Status:** Maintained – advanced policies pending.
+> **Last updated:** 2025-10-20
 
 ## REST Hardening
 - `AuthManager` protects `api.php` using hashed tokens stored in `system.brain`. The bootstrap token (`admin`) is explicitly rejected for REST, and the endpoint remains disabled until `api.enabled = true`.
