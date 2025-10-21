@@ -173,6 +173,7 @@
 ## 2025-10-21 – Midday Session
 
 - Dokumentationsstruktur konsolidiert: Root-README verschlankt, vollständige Handbücher unter `docs/README.md`; Querverweise in `AGENTS.md`, `docs/dev/MANUAL.md`, `docs/dev/partials/file-structure.md` angepasst.
+- Detailliertes Export/Preset-Konzept unter `.codex/2025-10-21-IDEAS.md` dokumentiert (Schema `context-unified-v2`, FilterEngine/Resolver-Plan, Command-Platzhalter).
 - Handbücher (User/Dev) und Referenzen (`commands`, `classmap`) mit den neuen Befehlen (`entity move`, payloadlose Reparentings) synchronisiert; erledigte TODOs entfernt.
 - Schema-Persistenz erweitert: `BrainRepository::resolveSchemaDefinition()` liefert Version/Commit; Entities speichern `fieldset_version`, Commits/Listen enthalten diese Metadaten; User-Doku erläutert, dass Saves standardmäßig die bestehende Schemarevision weiterverwenden.
 - Prüfte Module-Dokumentation auf offene Punkte; Roadmap bleibt bei Schritt 3 (Config-Agent – Bulk Import/Export & Audit Logging).
