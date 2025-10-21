@@ -1,6 +1,7 @@
 # ApiAgent Module
 
-> Status: Implemented – orchestrates REST gateway enablement and telemetry.
+> Status: Implemented – orchestrates REST gateway enablement and telemetry.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Toggle REST availability (`api serve`, `api stop`) while enforcing security preconditions.
