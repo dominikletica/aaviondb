@@ -1,6 +1,7 @@
 # EventsAgent Module
 
-> Status: Implemented – lightweight event bus diagnostics.
+> **Status:** Implemented – lightweight event bus diagnostics.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Report registered event listeners via the shared `EventBus`.
