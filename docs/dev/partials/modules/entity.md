@@ -1,6 +1,7 @@
 # EntityAgent Module
 
-> Status: Implemented – entity CRUD, hierarchy management, and cascade handling.
+> Status: Implemented – entity CRUD, hierarchy management, and cascade handling.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Manage entity CRUD and version lifecycle inside the active project.
