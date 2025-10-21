@@ -35,7 +35,7 @@
 ### Roadmap to Alpha (pre-tests)
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
 2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation. *(DONE – follow-up: refine restore/reactivation ergonomics and cascade diagnostics.)*
-3. **Configuration upgrades** – Add bulk import/export commands and config audit logging. *(Bulk JSON payload + audit events implemented; file-based import/export pending.)*
+3. **Configuration upgrades** – Add bulk import/export commands and config audit logging. *(Bulk JSON payload + audit events implemented; file-based import/export skipped by user request.)*
 4. **Export destinations & profiles** – Introduce preset destinations (disk/response), scheduler hooks, and schema-aware/LLM profiles.
 5. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
 6. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
@@ -49,8 +49,8 @@
 14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling. *(DONE – hierarchy map + docs shipped; follow-up: subtree move helpers & OpenAPI alignment.)*
 15. **Reference & query syntax** – Implement `[ref @project/entity/field]` resolution with round-trip-safe storage, fallback messages, and future `[query …]` filters (including recursive lookups).
 16. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
-17. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
-18. **Log verbosity controls** – Review module loggers and add configurable log levels once core modules are stable.
+17. **Log verbosity controls** – Review module loggers and add configurable log levels once core modules are stable.
+18. **Fieldset storage review** – Evaluate moving fieldsets/schemas into the system brain for cross-brain reuse.
 19. **Testing plan** – Design and implement the PHPUnit coverage plan (execute last).
 
 ## 2025-10-17
