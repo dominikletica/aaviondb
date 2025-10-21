@@ -1,6 +1,7 @@
 # AuthAgent Module
 
-> Status: Implemented – baseline command set is available.
+> Status: Implemented – baseline command set is available.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Manage API token lifecycle (grant/list/revoke/reset) and maintain REST enablement flags.
