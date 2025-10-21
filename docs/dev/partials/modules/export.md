@@ -1,6 +1,7 @@
 # ExportAgent Module
 
-> Status: Implemented – delivers baseline JSON export capabilities.
+> **Status:** Implemented – delivers baseline JSON export capabilities.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Accept `export <project|*> [entity[,entity[@version|#hash]]]` commands.
