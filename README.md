@@ -44,9 +44,9 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `list commits <project> [entity] [limit=50]` / `project commits …` | Show recent commits (optionally filtered by entity). |
 | `show <project> <entity[@version or #commit]>` / `entity show …` | Render the active or selected entity version as JSON. |
 | `save <project> <entity-path[@version or #commit][:fieldset[@version or #commit]]> {payload}` / `entity save …` | Create or merge a new entity version. Use slash paths (`parent/child`) to assign hierarchy, bind schemas, or reposition an entity via `--parent` (payload optional when only moving). |
-| `move <project> <source-path> <target-path> [--mode=merge|replace]` / `entity move …` | Reassign an entity (including its subtree) to a new parent path without touching payloads. |
-| `remove <project> <entity-path[,entity2]> [--recursive=0|1]` / `entity remove …` | Deactivate entities. Default promotes child entities to the root; `--recursive=1` archives the entire subtree. Warnings surface when children are moved. |
-| `delete <project> <entity-path[,entity2]> [--recursive=0|1]` / `entity delete …` | Permanently delete entities. Default promotes children before deleting the parent; `--recursive=1` purges descendants and their commits. Target specific versions with selectors (`entity@7`, `entity#hash`). |
+| `move <project> <source-path> <target-path> [--mode=merge/replace]` / `entity move …` | Reassign an entity (including its subtree) to a new parent path without touching payloads. |
+| `remove <project> <entity-path[,entity2]> [--recursive=0/1]` / `entity remove …` | Deactivate entities. Default promotes child entities to the root; `--recursive=1` archives the entire subtree. Warnings surface when children are moved. |
+| `delete <project> <entity-path[,entity2]> [--recursive=0/1]` / `entity delete …` | Permanently delete entities. Default promotes children before deleting the parent; `--recursive=1` purges descendants and their commits. Target specific versions with selectors (`entity@7`, `entity#hash`). |
 | `delete <project> <entity@version[,entity2#commit]>` | Remove specific versions or commits without deleting the entity. |
 | `restore <project> <entity> <@version or #commit>` / `entity restore …` | Reactivate an archived version. |
 
@@ -56,7 +56,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `project create <slug> [title="..."] [description="..."]` | Create a project with optional metadata. |
 | `project update <slug> [title="..."] [description="..."]` | Update project title/description. |
 | `project remove <slug>` | Archive (soft delete) a project (deactivates entities automatically). |
-| `project restore <slug> [--reactivate=0|1]` | Restore an archived project; optionally reactivate entities/versions in-place. |
+| `project restore <slug> [--reactivate=0/1]` | Restore an archived project; optionally reactivate entities/versions in-place. |
 | `project delete <slug> [purge_commits=1]` | Permanently delete a project (optionally purge commit history). |
 | `project info <slug>` | Display project summary and statistics. |
 
@@ -68,7 +68,7 @@ It offers both a **native PHP API** and a **REST interface** for full integratio
 | `brain switch <slug>` | Switch the active brain. |
 | `brain backup [slug] [label=name] [--compress=1]` | Create a backup for the specified (or active) brain (optionally gzip-compressed). |
 | `brain backups [slug]` | List stored backups (optionally filter by brain slug). |
-| `brain backup prune <slug|*> [--keep=10] [--older-than=30] [--dry-run=1]` | Remove backups according to retention rules (preview with `--dry-run`). |
+| `brain backup prune <slug/*> [--keep=10] [--older-than=30] [--dry-run=1]` | Remove backups according to retention rules (preview with `--dry-run`). |
 | `brain info [slug]` | Show metadata for the active or specified brain. |
 | `brain validate [slug]` | Run integrity diagnostics. |
 | `brain delete <slug>` | Permanently delete a non-active brain. |
