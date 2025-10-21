@@ -90,7 +90,8 @@ Planned enhancements are tracked in [`docs/dev/partials/extending.md`](./partial
 ## 🔗 Related Resources
 
 - [User Manual](../user/MANUAL.md) – onboarding guide and end-user workflows.
-- [README.md](../../README.md) – high-level product overview for the repository.
+- [README.md](../../README.md) – high-level project overview with links into the documentation set.
+- [docs/README.md](../README.md) – canonical documentation landing page (links to user/developer manuals, command & class references).
 - [`CHANGELOG.md`](../../CHANGELOG.md) – release history.
 - [`/LICENSE`](../../LICENSE) – project license.
 

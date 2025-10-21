@@ -292,6 +292,8 @@ final class BrainRepository
                 'hash' => $record['hash'] ?? null,
                 'commit' => $record['commit'] ?? null,
                 'committed_at' => $record['committed_at'] ?? null,
+                'fieldset' => $record['fieldset'] ?? ($entity['fieldset'] ?? null),
+                'fieldset_version' => $record['fieldset_version'] ?? null,
             ];
         }
 
@@ -1673,6 +1675,7 @@ final class BrainRepository
                 'status' => 'active',
                 'archived_at' => null,
                 'fieldset' => null,
+                'fieldset_version' => null,
                 'versions' => [],
             ];
         }
@@ -1745,7 +1748,13 @@ final class BrainRepository
             }
 
             if (is_string($desiredFieldset) && $desiredFieldset !== '') {
-                $schemaPayload = $this->resolveSchemaPayload($desiredFieldset, $fieldsetReference);
+                $schemaReference = $fieldsetReference;
+                if ($schemaReference === null && isset($entity['fieldset_version']) && $entity['fieldset_version'] !== null) {
+                    $schemaReference = '@' . $entity['fieldset_version'];
+                }
+
+                $schemaDefinition = $this->resolveSchemaDefinition($desiredFieldset, $schemaReference);
+                $schemaPayload = $schemaDefinition['payload'];
                 try {
                     $mergedPayload = $this->schemaValidator()->applySchema($mergedPayload, $schemaPayload);
                 } catch (SchemaException $exception) {
@@ -1753,10 +1762,17 @@ final class BrainRepository
                 }
 
                 $entity['fieldset'] = $desiredFieldset;
+                $entity['fieldset_version'] = $schemaDefinition['version'];
+                $schemaVersion = $schemaDefinition['version'];
             } else {
                 $entity['fieldset'] = null;
                 $fieldsetReference = null;
+                $entity['fieldset_version'] = null;
+                $schemaVersion = null;
             }
+        }
+        if (!isset($schemaVersion)) {
+            $schemaVersion = $entity['fieldset_version'] ?? null;
         }
 
         $currentVersion = $this->determineNextVersion($entity['versions'] ?? []);
@@ -1772,6 +1788,7 @@ final class BrainRepository
             'timestamp' => $timestamp,
             'merge' => $mergePayload,
             'fieldset' => $entity['fieldset'] ?? null,
+            'fieldset_version' => $schemaVersion,
         ];
 
         if ($sourceReference !== null) {
@@ -1793,6 +1810,7 @@ final class BrainRepository
             'payload' => $mergedPayload,
             'meta' => $meta,
             'merge' => $mergePayload,
+            'fieldset_version' => $schemaVersion,
         ];
 
         if ($sourceReference !== null) {
@@ -1825,6 +1843,7 @@ final class BrainRepository
             'timestamp' => $timestamp,
             'merge' => $mergePayload,
             'fieldset' => $entity['fieldset'] ?? null,
+            'fieldset_version' => $schemaVersion,
         ];
 
         if ($sourceReference !== null) {
@@ -1874,6 +1893,7 @@ final class BrainRepository
             'timestamp' => $timestamp,
             'merge' => $mergePayload,
             'fieldset' => $entity['fieldset'] ?? null,
+            'fieldset_version' => $schemaVersion,
             'source_reference' => $sourceReference,
             'fieldset_reference' => $fieldsetReference,
             'hierarchy' => $hierarchyState,
@@ -3884,6 +3904,7 @@ final class BrainRepository
             'archived_at' => $entity['archived_at'] ?? null,
             'active_version' => $entity['active_version'] ?? null,
             'fieldset' => $entity['fieldset'] ?? null,
+            'fieldset_version' => $entity['fieldset_version'] ?? null,
             'version_count' => \count($versions),
         ];
     }
@@ -4008,7 +4029,10 @@ final class BrainRepository
     /**
      * @return array<string, mixed>
      */
-    private function resolveSchemaPayload(string $fieldset, ?string $reference = null): array
+    /**
+     * @return array{payload: array<string, mixed>, version: string, commit: ?string}
+     */
+    private function resolveSchemaDefinition(string $fieldset, ?string $reference = null): array
     {
         try {
             $record = $this->getEntityVersion('fieldsets', $fieldset, $reference);
@@ -4031,7 +4055,14 @@ final class BrainRepository
             throw new StorageException(sprintf('Schema "%s" is invalid: %s', $fieldset, $exception->getMessage()), 0, $exception);
         }
 
-        return $payload;
+        $version = isset($record['version']) ? (string) $record['version'] : '1';
+        $commit = isset($record['commit']) ? (string) $record['commit'] : null;
+
+        return [
+            'payload' => $payload,
+            'version' => $version,
+            'commit' => $commit,
+        ];
     }
 
     private function isAssociativeArray(array $value): bool

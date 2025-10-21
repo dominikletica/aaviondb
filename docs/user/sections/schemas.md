@@ -65,12 +65,12 @@ php cli.php 'save storyverse hero:character {"name":"Aria","role":"Pilot"}'
 
 - `hero` will be validated against the `character` schema on every save.
 - Partial updates merge with the previous payload before validation.
-- Use `fieldset@version` if you want to pin a specific schema revision.
+- Use `fieldset@version` if you want to pin a specific schema revision. AavionDB stores the exact schema version (`fieldset_version`) that was applied, so later saves continue to validate against the same revision until you provide a new selector (e.g. `:character` to adopt the latest version).
 
-To remove a schema reference from an entity, save it with an empty selector:
+To remove a schema reference from an entity, pass an empty `fieldset` option:
 
 ```bash
-php cli.php 'save storyverse hero {"fieldset":""}'
+php cli.php 'entity save storyverse hero --fieldset=""'
 ```
 
 ---

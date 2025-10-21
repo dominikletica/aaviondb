@@ -167,3 +167,10 @@
 - Roadmap Step 2 and Step 14 marked complete (follow-up tasks captured); Module checklist now tracks open work for project restore/unarchive and hierarchy tooling helpers.
 - Added `project restore` with optional entity reactivation, plus hierarchy-aware filtering for `entity list`/`list entities`. Documentation + classmap/commands refreshed; TODOs now focus on subtree move helpers and advanced cascade refinements.
 - Implemented `entity move` (deterministic subtree relocation) und `entity save --parent` ohne Payload für Einzel-Reparenting. README, Manuals, Commands und Classmap aktualisiert; offen bleibt lediglich bessere Hierarchie-Diagnostik (z. B. Move-Impact-Previews).
+
+## 2025-10-21 – Midday Session
+
+- Dokumentationsstruktur konsolidiert: Root-README verschlankt, vollständige Handbücher unter `docs/README.md`; Querverweise in `AGENTS.md`, `docs/dev/MANUAL.md`, `docs/dev/partials/file-structure.md` angepasst.
+- Handbücher (User/Dev) und Referenzen (`commands`, `classmap`) mit den neuen Befehlen (`entity move`, payloadlose Reparentings) synchronisiert; erledigte TODOs entfernt.
+- Schema-Persistenz erweitert: `BrainRepository::resolveSchemaDefinition()` liefert Version/Commit; Entities speichern `fieldset_version`, Commits/Listen enthalten diese Metadaten; User-Doku erläutert, dass Saves standardmäßig die bestehende Schemarevision weiterverwenden.
+- Prüfte Module-Dokumentation auf offene Punkte; Roadmap bleibt bei Schritt 3 (Config-Agent – Bulk Import/Export & Audit Logging).

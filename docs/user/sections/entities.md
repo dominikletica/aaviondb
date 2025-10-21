@@ -41,6 +41,7 @@ php cli.php 'save storyverse hero:character {"name":"Aria","role":"Pilot"}'
 - `character` is a fieldset stored via `schema create`.
 - AavionDB merges the payload, then validates the result against the schema.
 - Use `fieldset@12` or `fieldset#hash` to target older schema versions.
+- The framework stores the schema version that was applied (`fieldset_version`), so later saves continue to validate against the same revision until you provide a new selector (e.g. `save storyverse hero:character` to adopt the latest version).
 
 ---
 

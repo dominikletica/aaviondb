@@ -21,7 +21,7 @@
 
 ## Repository Helpers
 - `listProjects()`, `listEntities()`, `saveEntity()`, `getEntityVersion()` manage deterministic storage (including incremental merges + schema hooks).  
-- `resolveSchemaPayload()` (internal) loads fieldset definitions from project `fieldsets`, honours `@version`/`#commit` selectors, and validates entity payloads before persistence.  
+- `resolveSchemaDefinition()` (internal) loads fieldset definitions from project `fieldsets`, honours `@version`/`#commit` selectors (defaulting to the stored `fieldset_version`), and validates entity payloads before persistence while returning the resolved version metadata.  
 - Config API: `setConfigValue()`, `getConfigValue()`, `deleteConfigValue()`, `listConfig()` (supports system/user brains, performs key normalization).  
 - Auth/API helpers: `registerAuthToken()`, `revokeAuthToken()`, `listAuthTokens()`, `setApiEnabled()`, `isApiEnabled()`, `updateBootstrapKey()` provide canonical mutations for security state (emit events, update telemetry).  
 - Atomic writes with integrity verification (write temp file → rename → re-read + hash validation); retries once on mismatch, logs failures, records telemetry (`integrityReport()`).

@@ -24,6 +24,7 @@ aavionDB/
 │   ├── exports/                 # Generated exports (optional persisted copies)
 │   └── backups/                 # Brain backups created via `brain backup`
 ├── docs/
+│   ├── README.md                # Documentation landing page (links to user/dev manuals)
 │   ├── user/                    # User-facing handbook (simple language, workflows)
 │   └── dev/                     # Developer reference (partials, class maps)
 ├── .codex/
@@ -35,7 +36,7 @@ aavionDB/
 ├── cli.php                      # CLI entry point
 ├── aaviondb.php                 # PHP entry point for embedded integrations
 ├── CHANGELOG.md                 # Release notes
-└── README.md                    # Project overview
+└── README.md                    # Lightweight project overview with pointers into docs/
 ```
 
 `PathLocator` ensures these directories exist during bootstrap. Adjust `.gitignore` when introducing new runtime folders (e.g., log archives, cache tags, export presets). Keep directories under version control when they hold documentation or templates; runtime artefacts (cache, exports, backups) stay excluded.

@@ -40,6 +40,7 @@
 - Module is located at `system/modules/schema`; schema persistence is handled via `BrainRepository::saveEntity()` against the special `fieldsets` project.
 - Parser recognises inline selectors (e.g. `schema show character@12`) and forwards references to `BrainRepository::getEntityVersion()`.
 - `schema list` relies on the same storage helpers as EntityAgent; versions are retrieved via `listEntityVersions("fieldsets", <slug>)` when requested.
+- `BrainRepository::resolveSchemaDefinition()` validates schemas and returns both payload and version metadata; EntityAgent stores the resolved version alongside the entity so future saves validate against the same revision unless a new selector is provided.
 - Create/update/save commands wrap fieldset operations with basic existence checks and default to full replacements (merge disabled unless explicitly requested).
 
 ## Examples
@@ -92,7 +93,7 @@ $response = AavionDB::run('schema lint', [
 - Invalid schema payloads return `status=error` with `SchemaException` message details.
 
 ## Outstanding Tasks
-- [ ] Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes
+- [x] Persist the resolved schema version (`fieldset_version`) on entities for backwards compatibility when schemas evolve.
 - [ ] Surface schema usage metrics and cross-reference with EntityAgent bindings.
 - [ ] Integrate with future Studio UI for schema editing workflows.
 - [ ] Add PHPUnit coverage for schema commands once the test harness is introduced.
