@@ -1,6 +1,7 @@
 # SchemaAgent Module
 
-> Status: Implemented – fieldset CRUD helpers, discovery, and schema validation.
+> **Status:** Implemented – fieldset CRUD helpers, discovery, and schema validation.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Enumerate JSON schema fieldsets stored in the `fieldsets` project.
@@ -91,6 +92,7 @@ $response = AavionDB::run('schema lint', [
 - Invalid schema payloads return `status=error` with `SchemaException` message details.
 
 ## Outstanding Tasks
+- [ ] Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes
 - [ ] Surface schema usage metrics and cross-reference with EntityAgent bindings.
 - [ ] Integrate with future Studio UI for schema editing workflows.
 - [ ] Add PHPUnit coverage for schema commands once the test harness is introduced.

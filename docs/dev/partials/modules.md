@@ -114,6 +114,7 @@ return [
 | `BrainAgent` | system | Brain lifecycle management |
 | `ProjectAgent` | system | Project indexing and metadata |
 | `EntityAgent` | system | Entity versioning workflow |
+| `SchemaAgent` | system | Fieldset linting support for entities |
 | `ExportAgent` | system | Data exports and snapshots |
 | `AuthAgent` | system | API token lifecycle |
 | `ApiAgent` | system | REST endpoint management |

@@ -1,6 +1,6 @@
 # CacheAgent Module
 
-> Status: Implemented – wraps the file-based cache subsystem for CLI/REST management.  
+> **Status:** Implemented – wraps the file-based cache subsystem for CLI/REST management.  
 > **Last updated:** 2025-10-20
 
 ## Responsibilities

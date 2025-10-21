@@ -1,6 +1,6 @@
 # ConfigAgent Module
 
-> Status: Implemented – configuration helpers for active/system brains.  
+> **Status:** Implemented – configuration helpers for active/system brains.  
 > **Last updated:** 2025-10-20
 
 ## Responsibilities

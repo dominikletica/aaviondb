@@ -44,11 +44,12 @@
 9. **Events telemetry** – Extend EventsAgent with emitted-event stats and optional streaming hooks.
 10. **Log storage abstraction** – Allow pluggable/archived log storage to support future UI integrations.
 11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs.
-12. **Testing plan** – Design and implement the PHPUnit coverage plan (execute after steps 1–11).
+12. **SchemaAgent** - Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes (`:<schema>` sets reference to the latest version, `:<schema@<version>>` sets a distinct version).
 13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/save/delete`) and link to ExportAgent.
 14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling. *(DONE – hierarchy map + docs shipped; follow-up: subtree move helpers & OpenAPI alignment.)*
 15. **Reference & query syntax** – Implement `[ref @project/entity/field]` resolution with round-trip-safe storage, fallback messages, and future `[query …]` filters (including recursive lookups).
 16. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
+17. **Testing plan** – Design and implement the PHPUnit coverage plan (execute last).
 
 ## 2025-10-17
 

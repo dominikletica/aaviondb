@@ -1,6 +1,7 @@
 # SecurityAgent Module
 
-> Status: Implemented – exposes rate limiting, lockdown, and security cache controls.
+> **Status:** Implemented – exposes rate limiting, lockdown, and security cache controls.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Bridge `SecurityManager` controls to CLI/REST (`security` command).

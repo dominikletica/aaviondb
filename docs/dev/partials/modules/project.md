@@ -1,6 +1,7 @@
 # ProjectAgent Module
 
-> Status: Implemented – lifecycle, metadata, and archive cascades in place.
+> **Status:** Implemented – lifecycle, metadata, and archive cascades in place.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Manage project lifecycle within the active brain (list/create/archive/delete/restore/info).

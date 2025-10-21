@@ -1,6 +1,6 @@
 # AuthAgent Module
 
-> Status: Implemented – baseline command set is available.  
+> **Status:** Implemented – baseline command set is available.  
 > **Last updated:** 2025-10-20
 
 ## Responsibilities

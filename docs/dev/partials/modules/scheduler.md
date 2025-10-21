@@ -1,6 +1,7 @@
 # SchedulerAgent Module
 
-> Status: Implemented – scheduled command management and cron execution.
+> **Status:** Implemented – scheduled command management and cron execution.  
+> **Last updated:** 2025-10-20
 
 ## Responsibilities
 - Persist scheduler configuration inside the system brain (task slug + command string).

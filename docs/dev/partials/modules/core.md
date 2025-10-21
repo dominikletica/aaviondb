@@ -1,6 +1,6 @@
 # CoreAgent Module
 
-> Status: Implemented – runtime metadata commands are available across CLI/REST/PHP.  
+> **Status:** Implemented – runtime metadata commands are available across CLI/REST/PHP.  
 > **Last updated:** 2025-10-20
 
 ## Responsibilities

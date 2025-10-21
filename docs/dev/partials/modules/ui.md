@@ -1,6 +1,7 @@
 # UiAgent Module (DRAFT)
 
-> Status: Draft – placeholder for console/UI integration guidance.
+> **Status:** Draft – placeholder for console/UI integration guidance.  
+> **Last updated:** 2025-10-18
 
 ## Responsibilities
 - Expose integration hooks and minimal diagnostics endpoints for **AavionStudio**.
