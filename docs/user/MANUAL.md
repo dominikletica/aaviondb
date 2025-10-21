@@ -21,15 +21,15 @@ Each section focuses on a typical task. Read them in order when you are new to t
 10. [Performance & Cache](sections/performance.md) – Keep the system fast with smart caching.  
 11. [Troubleshooting & FAQ](sections/troubleshooting.md) – Solve common issues quickly.
 
-If you need a full list of commands, see [Command Cheat Sheet](sections/troubleshooting.md#quick-reference) or the technical reference in [`docs/dev/commands.md`](../dev/commands.md).
+If you need a list of available commands, see [Command Cheat Sheet](sections/troubleshooting.md#quick-reference) or the technical reference in [`../dev/commands.md`](../dev/commands.md).
 
 ---
 
 ## 🔗 Helpful Shortcuts
 
-- [README.md](../../README.md) – Product overview and quick start.
+- [README.md](../README.md) – Manuals start page, product overview and quick start.
 - [Developer Manual](../dev/MANUAL.md) – Deep technical reference for contributors.
-- [Class Reference](../dev/classmap.md) – Overview of all classes and methods.
+- [Commands Reference](../dev/commands.md) – Overview of all available commands.
 
 ---
 
