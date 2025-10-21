@@ -1,0 +1,15 @@
+{
+    "name": "Preset Agent",
+    "slug": "preset",
+    "scope": "system",
+    "version": "0.1.0-dev",
+    "description": "Manage export presets and layout templates.",
+    "autoload": true,
+    "capabilities": [
+        "commands.register",
+        "parser.extend",
+        "storage.read",
+        "storage.write",
+        "logger.use"
+    ]
+}

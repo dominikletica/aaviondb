@@ -1,6 +1,6 @@
 # Exports & Presets
 
-Exports turn your project data into JSON packages that other tools (like ChatGPT) can consume as context.
+Exports produce deterministic JSON bundles optimised for LLM consumption. They flatten entities, embed guidance, and surface cache policies so downstream tools (for example ChatGPT) can reason about the payload quickly.
 
 ---
 
@@ -10,8 +10,8 @@ Exports turn your project data into JSON packages that other tools (like ChatGPT
 php cli.php "export storyverse"
 ```
 
-- Exports the active versions of all entities in `storyverse`.
-- The response contains a JSON object with project metadata, entities, versions, and cache guidance.
+- Returns the active version of every entity in the `storyverse` project.
+- The response follows the `context-unified-v2` layout (see example below).
 
 REST:
 
@@ -30,78 +30,114 @@ $response = AavionDB::run('export', ['project' => 'storyverse']);
 
 ## Selecting Entities and Versions
 
-- `export storyverse hero,villain` – Choose specific entities.
-- `export storyverse hero@12` – Export entity version 12.
-- `export storyverse hero@12,villain@current` – Mix fixed versions and active versions.
-- `export storyverse*` is not allowed; use comma-separated projects (`project1,project2`) or `*` to export every project in the active brain.
+- `export storyverse hero,villain` – limit the export to specific entities.
+- `export storyverse hero@12` – export a fixed entity revision.
+- `export storyverse hero@12,villain@current` – mix fixed revisions with the active one.
+- `export *` – export every project in the active brain (no selectors allowed in this mode).
+
+`description="..."` and `usage="..."` add human-readable guidance to the export bundle. When `usage` is omitted the exporter reuses the description.
 
 ---
 
-## Description & Usage Guidance
+## Preset Workflows
 
-Add human-readable instructions:
+Presets now live in the **system brain** and are managed through the `preset` command family:
 
 ```bash
-php cli.php 'export storyverse description="Context bundle for story planning" usage="Load all entities and keep the latest notes handy."'
+php cli.php "preset list"
+php cli.php "preset show default"
+php cli.php "preset copy default focus-scene"
+php cli.php "preset update focus-scene" --payload='{"meta": {...}}'
+php cli.php "preset delete focus-scene"
 ```
 
-- `usage` overrides `description` for downstream guidance.  
-- If only `description` is provided, the exporter copies it to `usage` automatically.
+- `preset import <slug> <file>` and `preset export <slug> [--file=...]` allow round-tripping JSON definitions.
+- `preset create <slug> --payload='{"meta": {...}}'` stores a new preset after validation.
+- Presets define project selectors, entity filters, payload whitelists/blacklists, default descriptions, policies, and the output layout.
+- Use placeholders: presets can reference `${project}` (the CLI argument) and `${param.name}` values passed via `--param.name=value`.
 
----
-
-## Presets
-
-Presets live in `user/presets/export/`. They help you:
-
-- Select slices based on entity lists or payload filters.
-- Modify exported payloads (whitelist/blacklist fields).
-- Provide default descriptions and usage texts.
-
-Call a preset with:
+Execute a preset export:
 
 ```bash
-php cli.php "export storyverse:preset-name"
+php cli.php "export storyverse --preset=focus-scene --param.scene=intro"
 ```
 
-To inspect or edit a preset, open the JSON file and adjust `selection` and `transform` rules. Regex filters are supported when `match` is set to `regex`.
+The command automatically resolves the preset, applies filters through the FilterEngine, and renders the bundled layout.
 
 ---
 
-## Example Export Snippet
+## Example Response (`context-unified-v2`)
 
 ```json
 {
-  "status": "ok",
-  "data": {
+  "meta": {
+    "layout": "context-unified-v2",
+    "preset": "default",
+    "generated_at": "2025-10-21T15:42:01Z",
     "scope": "project",
-    "project": {
-      "slug": "storyverse",
-      "title": "Story Verse",
-      "description": "Shared world bible",
-      "entities": [
+    "description": "Context bundle for story planning",
+    "action": "export storyverse"
+  },
+  "guide": {
+    "usage": "Load all entities and keep the latest notes handy.",
+    "notes": [
+      "Each entity is self-contained and references others via '@project.slug'.",
+      "Active versions represent canon unless selectors override."
+    ]
+  },
+  "policies": {
+    "load": "Treat \"active_version\" as canonical unless selectors override.",
+    "cache": {
+      "ttl": 3600,
+      "invalidate_on": ["hash", "commit"]
+    },
+    "references": {
+      "include": true,
+      "depth": 1
+    }
+  },
+  "index": {
+    "projects": [
+      { "slug": "storyverse", "title": "Story Verse", "entity_count": 2 }
+    ],
+    "entities": [
+      { "uid": "storyverse.hero", "project": "storyverse", "slug": "hero" }
+    ]
+  },
+  "entities": [
+    {
+      "uid": "storyverse.hero",
+      "project": "storyverse",
+      "slug": "hero",
+      "version": "3",
+      "commit": "b9d2…",
+      "active": true,
+      "parent": null,
+      "children": [],
+      "refs": [],
+      "payload": {
+        "name": "Aria",
+        "role": "Pilot"
+      },
+      "payload_versions": [
         {
-          "slug": "hero",
-          "active_version": 3,
-          "versions": [
-            {
-              "version": 3,
-              "status": "active",
-              "hash": "b9d2…",
-              "committed_at": "2025-10-19T09:12:34Z",
-              "payload": { "name": "Aria", "role": "Pilot" }
-            }
-          ]
+          "version": "3",
+          "status": "active",
+          "hash": "b9d2…",
+          "commit": "b9d2…",
+          "committed_at": "2025-10-19T09:12:34Z",
+          "payload": {
+            "name": "Aria",
+            "role": "Pilot"
+          }
         }
       ]
-    },
-    "guide": {
-      "description": "Context bundle for story planning",
-      "usage": "Load all entities and keep the latest notes handy.",
-      "cache": {
-        "policy": "invalidate-on-active-version-change"
-      }
     }
+  ],
+  "stats": {
+    "projects": 1,
+    "entities": 1,
+    "versions": 1
   }
 }
 ```
@@ -110,10 +146,11 @@ To inspect or edit a preset, open the JSON file and adjust `selection` and `tran
 
 ## Tips for LLM Efficiency
 
-- Keep descriptions short and action oriented.
-- Use presets to remove fields the LLM does not need.
-- Export only the relevant entities to reduce token usage.
+- Use presets to limit the slice (payload filters, whitelists, reference depth).
+- Provide concise `usage` instructions so the model knows how to consume the bundle.
+- `--param.*` enables preset placeholders (`${param.scene}`) for dynamic slices.
+- Combine exports with the cache agent to warm or purge artefacts before handing them to an LLM.
 
 ---
 
-Need automated exports? Continue to [Automation & Scheduler](automation.md).
+Looking for scheduled or automated exports? Continue to [Automation & Scheduler](automation.md).

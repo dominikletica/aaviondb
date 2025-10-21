@@ -19,7 +19,7 @@ aavionDB/
 │   ├── modules/                 # User-defined modules
 │   ├── storage/                 # User brains (JSON)
 │   ├── presets/
-│   │   └── export/              # Export preset definitions (JSON)
+│   │   └── export/              # Optional preset import/export staging (presets persist in system brain)
 │   ├── cache/                   # Cached artefacts (tagged, TTL-governed)
 │   ├── exports/                 # Generated exports (optional persisted copies)
 │   └── backups/                 # Brain backups created via `brain backup`

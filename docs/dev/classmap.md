@@ -100,6 +100,12 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
           - userExports(): string
           - userModules(): string
           - userStorage(): string
+    - **Filters**
+      - **FilterEngine**
+        - `AavionDB\Core\Filters\FilterEngine`
+          - __construct(AavionDB\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger)
+          - selectEntities(string $projectSlug, array $filters, array $options = []): array
+          - passesFilters(string $projectSlug, string $entitySlug, array $filters, array $options = []): bool
     - **Hashing**
       - **CanonicalJson**
         - `AavionDB\Core\Hashing\CanonicalJson`
@@ -259,6 +265,14 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
         - `AavionDB\Modules\Export\ExportAgent`
           - __construct(AavionDB\Core\Modules\ModuleContext $context)
           - register(): void
+    - **Preset**
+      - **PresetAgent**
+        - `AavionDB\Modules\Preset\PresetAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+      - **PresetValidator**
+        - `AavionDB\Modules\Preset\PresetValidator`
+          - validate(array $definition): array
     - **Log**
       - **LogAgent**
         - `AavionDB\Modules\Log\LogAgent`

@@ -155,11 +155,15 @@ return [
   - List schemas stored in the `fieldsets` project
   - Inspect specific schema revisions via `@version`/`#commit`
   - Create, update, upsert, delete, and lint JSON Schema payloads using the shared validator
-- **`ExportAgent` (`export`)** – Data exports and snapshots
-  - Provides `export <project[,project…]|*>` with optional entity/version selectors
-  - Produces deterministic JSON bundles (`project.items[*]`) with payloads, hashes, and guidance for downstream tooling
-  - Preset filters support equality, set membership, and regular-expression matching on payload fields
-  - TODO: presets/destinations and schema profiles (see module doc)
+- **`ExportAgent` (`export`)** – LLM-ready export bundles
+  - Handles `export <project|*> [entities] [--preset=slug] [--param.foo=value]`
+  - Builds flattened `context-unified-v2` payloads (meta/guide/policies/index/entities/stats)
+  - Delegates preset evaluation to `PresetAgent` + `FilterEngine` (entity/payload filters, transforms)
+  - TODO: export destinations, scheduler hooks, advanced profiles
+- **`PresetAgent` (`preset`)** – Preset lifecycle management
+  - CLI CRUD for presets (`preset list/show/create/update/delete/copy/import/export`)
+  - Stores presets/layouts in the system brain; seeds default preset + layout on bootstrap
+  - Validates definitions (selection DSL, placeholders, policies) via `PresetValidator`
 - **`AuthAgent` (`auth`)** – API token lifecycle
   - Commands: auth grant/list/revoke/reset
   - Bootstrap key rotation

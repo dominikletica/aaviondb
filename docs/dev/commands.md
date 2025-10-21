@@ -47,7 +47,16 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `save` – Persist a (possibly merged) payload or reparent an entity (`entity save <project> <entity-path[@version|#commit][:fieldset[@version|#commit]]> {json} [--parent=path]`).
     - `show` – Show the active or selected version (`entity show <project> <entity> [@version|#commit]`).
     - `versions` – List versions for an entity (`entity versions <project> <entity>`).
-- `export` – Generate export bundles (`export <project[,project…]|*> [entity[,entity[@version|#commit]]] [description="..."] [usage="..."] [preset]`).
+- `export` – Generate `context-unified-v2` bundles (`export <project|*> [entities] [--preset=slug] [--param.foo=value] [description="..."] [usage="..."]`).
+- `preset`
+    - `list` – List presets stored in the system brain (`preset list`).
+    - `show` – Inspect a preset definition (`preset show <slug>`).
+    - `create` – Create a preset from a JSON payload (`preset create <slug> --payload='{...}'`).
+    - `update` – Update an existing preset (`preset update <slug> --payload='{...}'`).
+    - `delete` – Remove a preset (`preset delete <slug>`; default preset is immutable).
+    - `copy` – Clone a preset (`preset copy <source> <target> [--force]`).
+    - `import` – Import a preset from disk (`preset import <slug> <path> [--force]`).
+    - `export` – Export a preset to disk (`preset export <slug> [--file=path]`).
 - `get` – Alias for `config get`.
 - `help` – List commands or show details (`help [command=name]`).
 - `list`

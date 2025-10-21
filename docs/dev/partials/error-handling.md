@@ -32,8 +32,8 @@
 | Export: wildcard + selectors | `Entity selectors are not supported when exporting all projects.` | CLI/PHP/REST → `status=error`. |
 | Export: selectors with multi-project CSV | `Entity selectors are only supported when exporting a single project.` |  |
 | Export: preset + selectors | `Entity selectors cannot be combined with preset-based exports.` |  |
-| Export: preset missing | `Preset "<name>" not found (expected <path>).` | Ensure Studio writes JSON to `user/presets/export/`. |
-| Export: preset JSON invalid | `Preset "<name>" contains invalid JSON: …` | Includes JSON parser error in message. |
+| Export: preset missing | `Preset "<name>" not found.` | Occurs when the preset slug is unknown or deleted. |
+| Export: preset validation | `Preset parameter "foo" is required.` (example) | All preset validation failures bubble up as deterministic messages. |
 | Auth: invalid token | `Invalid or unknown API token.` | HTTP 401. |
 | Auth: inactive token | `API token is not active.` | HTTP 403. |
 

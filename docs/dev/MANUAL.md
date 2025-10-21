@@ -50,6 +50,7 @@ Each module partial documents command handlers, call flows, primary classes, and
 | EntityAgent | [entity](./partials/modules/entity.md) |
 | ConfigAgent | [config](./partials/modules/config.md) |
 | ExportAgent | [export](./partials/modules/export.md) |
+| PresetAgent | [preset](./partials/modules/preset.md) |
 | SchemaAgent | [schema](./partials/modules/schema.md) |
 | AuthAgent | [auth](./partials/modules/auth.md) |
 | ApiAgent | [api](./partials/modules/api.md) |

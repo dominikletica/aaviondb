@@ -2058,6 +2058,264 @@ final class BrainRepository
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function listPresets(): array
+    {
+        $brain = $this->loadSystemBrain();
+        $presets = $brain['export']['presets'] ?? [];
+
+        if (!\is_array($presets)) {
+            return [];
+        }
+
+        ksort($presets);
+
+        $result = [];
+        foreach ($presets as $slug => $definition) {
+            if (!\is_array($definition)) {
+                continue;
+            }
+
+            $meta = isset($definition['meta']) && \is_array($definition['meta'])
+                ? $definition['meta']
+                : [];
+
+            $result[] = [
+                'slug' => $slug,
+                'description' => $meta['description'] ?? null,
+                'usage' => $meta['usage'] ?? null,
+                'layout' => $meta['layout'] ?? null,
+                'created_at' => $meta['created_at'] ?? null,
+                'updated_at' => $meta['updated_at'] ?? null,
+                'tags' => $meta['tags'] ?? [],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getPreset(string $slug): ?array
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $brain = $this->loadSystemBrain();
+        $definition = $brain['export']['presets'][$normalized] ?? null;
+
+        if (!\is_array($definition)) {
+            return null;
+        }
+
+        $meta = isset($definition['meta']) && \is_array($definition['meta']) ? $definition['meta'] : [];
+        $meta['slug'] = $normalized;
+        $definition['meta'] = $meta;
+
+        return $definition;
+    }
+
+    /**
+     * @param array<string, mixed> $definition
+     *
+     * @return array<string, mixed>
+     */
+    public function savePreset(string $slug, array $definition, bool $allowUpdate = true): array
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            throw new StorageException('Preset slug must not be empty.');
+        }
+
+        $timestamp = $this->timestamp();
+        $saved = null;
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized, $definition, $allowUpdate, $timestamp, &$saved): void {
+            $export =& $this->ensureExportSection($brain);
+            $presets =& $export['presets'];
+
+            $existing = isset($presets[$normalized]) && \is_array($presets[$normalized])
+                ? $presets[$normalized]
+                : null;
+
+            if ($existing !== null && !$allowUpdate) {
+                throw new StorageException(sprintf('Preset "%s" already exists.', $normalized));
+            }
+
+            $record = $definition;
+            $meta = isset($record['meta']) && \is_array($record['meta']) ? $record['meta'] : [];
+
+            if ($existing !== null) {
+                $previousMeta = isset($existing['meta']) && \is_array($existing['meta']) ? $existing['meta'] : [];
+                $meta['created_at'] = $previousMeta['created_at'] ?? ($meta['created_at'] ?? $timestamp);
+            } else {
+                $meta['created_at'] = $meta['created_at'] ?? $timestamp;
+            }
+
+            $meta['updated_at'] = $timestamp;
+            $meta['slug'] = $normalized;
+
+            $record['meta'] = $meta;
+            $presets[$normalized] = $record;
+            $saved = $record;
+        });
+
+        return $saved ?? [];
+    }
+
+    public function deletePreset(string $slug): void
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            throw new StorageException('Preset slug must not be empty.');
+        }
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized): void {
+            if (!isset($brain['export']['presets'][$normalized])) {
+                throw new StorageException(sprintf('Preset "%s" does not exist.', $normalized));
+            }
+
+            unset($brain['export']['presets'][$normalized]);
+        });
+    }
+
+    public function presetExists(string $slug): bool
+    {
+        $normalized = $this->normalizeKey($slug);
+        if ($normalized === '') {
+            return false;
+        }
+
+        $brain = $this->loadSystemBrain();
+
+        return isset($brain['export']['presets'][$normalized]) && \is_array($brain['export']['presets'][$normalized]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listExportLayouts(): array
+    {
+        $brain = $this->loadSystemBrain();
+        $layouts = $brain['export']['layouts'] ?? [];
+
+        if (!\is_array($layouts)) {
+            return [];
+        }
+
+        ksort($layouts);
+        $result = [];
+
+        foreach ($layouts as $id => $definition) {
+            if (!\is_array($definition)) {
+                continue;
+            }
+
+            $meta = isset($definition['meta']) && \is_array($definition['meta']) ? $definition['meta'] : [];
+            $result[] = [
+                'id' => $id,
+                'description' => $meta['description'] ?? null,
+                'format' => $definition['format'] ?? 'json',
+                'updated_at' => $meta['updated_at'] ?? null,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getExportLayout(string $id): ?array
+    {
+        $normalized = $this->normalizeKey($id);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $brain = $this->loadSystemBrain();
+        $layout = $brain['export']['layouts'][$normalized] ?? null;
+
+        if (!\is_array($layout)) {
+            return null;
+        }
+
+        $meta = isset($layout['meta']) && \is_array($layout['meta']) ? $layout['meta'] : [];
+        $meta['id'] = $normalized;
+        $layout['meta'] = $meta;
+
+        return $layout;
+    }
+
+    /**
+     * @param array<string, mixed> $layout
+     *
+     * @return array<string, mixed>
+     */
+    public function saveExportLayout(string $id, array $layout, bool $allowUpdate = true): array
+    {
+        $normalized = $this->normalizeKey($id);
+        if ($normalized === '') {
+            throw new StorageException('Layout identifier must not be empty.');
+        }
+
+        $timestamp = $this->timestamp();
+        $saved = null;
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized, $layout, $allowUpdate, $timestamp, &$saved): void {
+            $export =& $this->ensureExportSection($brain);
+            $layouts =& $export['layouts'];
+
+            $existing = isset($layouts[$normalized]) && \is_array($layouts[$normalized])
+                ? $layouts[$normalized]
+                : null;
+
+            if ($existing !== null && !$allowUpdate) {
+                throw new StorageException(sprintf('Layout "%s" already exists.', $normalized));
+            }
+
+            $record = $layout;
+            $meta = isset($record['meta']) && \is_array($record['meta']) ? $record['meta'] : [];
+
+            if ($existing !== null) {
+                $previousMeta = isset($existing['meta']) && \is_array($existing['meta']) ? $existing['meta'] : [];
+                $meta['created_at'] = $previousMeta['created_at'] ?? ($meta['created_at'] ?? $timestamp);
+            } else {
+                $meta['created_at'] = $meta['created_at'] ?? $timestamp;
+            }
+
+            $meta['updated_at'] = $timestamp;
+            $meta['id'] = $normalized;
+
+            $record['meta'] = $meta;
+            $layouts[$normalized] = $record;
+            $saved = $record;
+        });
+
+        return $saved ?? [];
+    }
+
+    public function deleteExportLayout(string $id): void
+    {
+        $normalized = $this->normalizeKey($id);
+        if ($normalized === '') {
+            throw new StorageException('Layout identifier must not be empty.');
+        }
+
+        $this->updateSystemBrain(function (array &$brain) use ($normalized): void {
+            if (!isset($brain['export']['layouts'][$normalized])) {
+                throw new StorageException(sprintf('Layout "%s" does not exist.', $normalized));
+            }
+
+            unset($brain['export']['layouts'][$normalized]);
+        });
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function listSchedulerTasks(): array
     {
         $brain = $this->loadSystemBrain();
@@ -3427,6 +3685,10 @@ final class BrainRepository
             'config' => [],
             'auth' => $this->defaultAuthState($overrides['auth'] ?? []),
             'api' => $this->defaultApiState($overrides['api'] ?? []),
+            'export' => [
+                'presets' => [],
+                'layouts' => [],
+            ],
         ];
     }
 
@@ -3521,6 +3783,21 @@ final class BrainRepository
             isset($merged['api']) && \is_array($merged['api']) ? $merged['api'] : [],
             $defaults['api']
         );
+
+        if (!isset($merged['export']) || !\is_array($merged['export'])) {
+            $merged['export'] = [
+                'presets' => [],
+                'layouts' => [],
+            ];
+        }
+
+        if (!isset($merged['export']['presets']) || !\is_array($merged['export']['presets'])) {
+            $merged['export']['presets'] = [];
+        }
+
+        if (!isset($merged['export']['layouts']) || !\is_array($merged['export']['layouts'])) {
+            $merged['export']['layouts'] = [];
+        }
 
         return $merged;
     }
@@ -4097,6 +4374,29 @@ final class BrainRepository
         $brain['meta']['updated_at'] = $this->timestamp();
         $this->systemBrain = $brain;
         $this->writeBrain($this->paths->systemBrain(), $brain);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function &ensureExportSection(array &$brain): array
+    {
+        if (!isset($brain['export']) || !\is_array($brain['export'])) {
+            $brain['export'] = [
+                'presets' => [],
+                'layouts' => [],
+            ];
+        }
+
+        if (!isset($brain['export']['presets']) || !\is_array($brain['export']['presets'])) {
+            $brain['export']['presets'] = [];
+        }
+
+        if (!isset($brain['export']['layouts']) || !\is_array($brain['export']['layouts'])) {
+            $brain['export']['layouts'] = [];
+        }
+
+        return $brain['export'];
     }
 
     private function tokenPreview(string $token): string

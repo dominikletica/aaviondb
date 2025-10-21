@@ -31,6 +31,7 @@
 - **CacheAgent (`cache`)**: [x] CacheManager wiring with enable/disable/ttl/purge; [x] expose tag-level diagnostics; [ ] warm cache helpers for heavy exports.
 - **SecurityAgent (`security`)**: [x] Rate limiting + manual lockdown + purge; [ ] whitelist/bypass rules for trusted clients; [ ] audit trails.
 - **SchemaAgent (`schema`)**: [x] Baseline list/show/lint commands; [x] create/update/delete fieldset helpers; [ ] Studio integration hooks; [ ] cached lint results & metrics.
+- **PresetAgent (`preset`)**: [x] CLI CRUD + import/export; [x] default preset/layout bootstrap; [ ] advanced layout library & Studio UI integration guidance.
 
 ### Roadmap to Alpha (pre-tests)
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
@@ -45,7 +46,7 @@
 10. **Log storage abstraction** – Allow pluggable/archived log storage to support future UI integrations.
 11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs.
 12. **SchemaAgent** - Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes (`:<schema>` sets reference to the latest version, `:<schema@<version>>` sets a distinct version). *(DONE – entity `fieldset_version` tracking in place.)*
-13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/save/delete`) and link to ExportAgent.
+13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/delete/copy/import/export`) and link to ExportAgent. *(DONE – PresetAgent + FilterEngine integration; follow-up: advanced layouts & Studio hooks tracked under Step 4/11.)*
 14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling. *(DONE – hierarchy map + docs shipped; follow-up: subtree move helpers & OpenAPI alignment.)*
 15. **Reference & query syntax** – Implement `[ref @project/entity/field]` resolution with round-trip-safe storage, fallback messages, and future `[query …]` filters (including recursive lookups).
 16. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
@@ -179,3 +180,12 @@
 - Prüfte Module-Dokumentation auf offene Punkte; Roadmap bleibt bei Schritt 3 (Config-Agent – Bulk Import/Export & Audit Logging).
 - Config-Agent modernisiert: Bulk-Updates über JSON-Payload, `get *` alias, Doku & Beispiele aktualisiert. Audit-Logging/Bulk-Import weiterhin offen für Schritt 3.
 - Config-Agent ergänzt um Audit-Events (`config.key.updated/deleted`) inkl. Log-Ausgabe; Bulk-Update Logik schreibt pro Key einen Eintrag.
+
+## 2025-10-21 – Afternoon Session
+
+- Implemented `PresetAgent` system module with full CLI CRUD (`preset list/show/create/update/delete/copy/import/export`) and default preset/layout bootstrap.
+- Added `PresetValidator` to normalise preset definitions and `FilterEngine` core service for DSL evaluation (`selectEntities`, `passesFilters`).
+- Extended `BrainRepository` with preset/layout storage APIs (`list/get/save/delete` for presets and layouts).
+- Rebuilt `ExportAgent` around the new preset infrastructure: parameter parsing, FilterEngine integration, flattened `context-unified-v2` rendering, project/index/stats aggregation.
+- Updated user/developer docs (exports, preset module, error handling), command/class references, and class map to reflect the new workflow.
+- Next focus: continue Roadmap Step 4 (export destinations & advanced profiles) and document remaining preset/policy follow-ups.
