@@ -1,7 +1,7 @@
 # Versioning & Commit Hashes
 
 > **Status:** Implemented  
-> **Last updated:** 0.1.0-dev
+> **Last updated:** 2025-10-20
 
 - Each entity version increments an integer counter (`version`) and stores a SHA-256 hash of the canonical (merged) payload.  
 - Commits add metadata: `commit` hash (deterministic across content + metadata), timestamps, status (`active|inactive|archived`), `merge` flag, optional `fieldset`, plus optional `source_reference` / `fieldset_reference` when selectors are used.  
