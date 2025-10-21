@@ -41,5 +41,9 @@ return [
             'description' => 'Export a preset definition to disk.',
             'group' => 'export',
         ],
+        'preset vars' => [
+            'description' => 'Show placeholders and parameters required by a preset.',
+            'group' => 'export',
+        ],
     ],
 ];

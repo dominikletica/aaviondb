@@ -6,7 +6,7 @@ namespace AavionDB\Core\Cache;
 
 use AavionDB\Core\EventBus;
 use AavionDB\Core\Filesystem\PathLocator;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use Throwable;
 use function array_filter;

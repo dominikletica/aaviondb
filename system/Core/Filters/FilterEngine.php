@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace AavionDB\Core\Filters;
 
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use Throwable;
 use function array_filter;

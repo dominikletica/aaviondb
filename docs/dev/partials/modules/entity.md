@@ -34,8 +34,8 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Entity\EntityAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – entity persistence, merge resolution, version metadata.  
-- `AavionDB\Schema\SchemaValidator` – validates and enriches payloads based on attached fieldsets.  
+- `AavionDB\Core\Storage\BrainRepository` – entity persistence, merge resolution, version metadata.  
+- `AavionDB\Core\Schema\SchemaValidator` – validates and enriches payloads based on attached fieldsets.  
 - `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, cache/security helpers as needed.  
 - `AavionDB\Core\CommandResponse` – shared response envelope.
 
@@ -45,7 +45,7 @@
 - Incremental saves merge the new payload into the selected source version (default: active). Properties set to `null` are removed; associative sub-objects merge recursively; indexed arrays are replaced wholesale. Merge sources can be pinned via `entity@13`/`entity#commit` selectors.
 - If no payload is supplied but a `--parent` override is present, the module forces a merge so the existing payload is preserved while reparenting the entity (a new version is still recorded).
 - JSON schemas reside in project `fieldsets`. Schema entities are linted before storage, and entity saves with a `fieldset` apply validation plus default/placeholder expansion to the merged payload.
-- Schema handling lives in `system/Schema/SchemaValidator.php` (`applySchema()` / `assertValidSchema()`); adjust placeholder/default logic there if schema semantics evolve.
+- Schema handling lives in `system/Core/Schema/SchemaValidator.php` (`applySchema()` / `assertValidSchema()`); adjust placeholder/default logic there if schema semantics evolve.
 - Commit metadata now includes the effective `merge` flag and `fieldset`, enabling downstream tooling to reason about incremental updates.
 - Schema selectors support version pins (`:fieldset@14`, `:fieldset#hash`) and are resolved before validation; both schema and merge source references are stored alongside commit metadata for diagnostics.
 - Hierarchy data lives in `projects[slug].hierarchy` (`parents`/`children` maps). `saveEntity()` resolves parent chains, enforces the configurable `hierarchy.max_depth` (set via `set hierarchy.max_depth <n>`), prevents cycles, and surfaces warnings when segments are skipped.

@@ -27,7 +27,7 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Project\ProjectAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – project persistence and statistics.  
+- `AavionDB\Core\Storage\BrainRepository` – project persistence and statistics.  
 - `AavionDB\Core\Modules\ModuleContext` – provides access to command registry, logger, and debug helper.  
 - `AavionDB\Core\CommandResponse` – ensures a consistent response schema across CLI/REST/PHP callers.
 

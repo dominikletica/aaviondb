@@ -6,7 +6,7 @@ namespace AavionDB\Core\Security;
 
 use AavionDB\AavionDB;
 use AavionDB\Core\Cache\CacheManager;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use function array_key_exists;
 use function array_merge;

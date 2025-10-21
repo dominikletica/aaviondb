@@ -8,7 +8,7 @@ use AavionDB\Core\CommandResponse;
 use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use InvalidArgumentException;
 use JsonException;
 use Psr\Log\LoggerInterface;
@@ -16,6 +16,7 @@ use Throwable;
 use function array_map;
 use function array_shift;
 use function array_unshift;
+use function array_unique;
 use function array_values;
 use function count;
 use function dirname;
@@ -115,6 +116,10 @@ final class PresetAgent
                 case 'export':
                     $context->setAction('preset export');
                     break;
+                case 'vars':
+                case 'parameters':
+                    $context->setAction('preset vars');
+                    break;
                 default:
                     array_unshift($tokens, $sub);
                     $context->setAction('preset list');
@@ -135,6 +140,7 @@ final class PresetAgent
         $this->context->commands()->register('preset copy', fn (array $parameters): CommandResponse => $this->presetCopyCommand($parameters));
         $this->context->commands()->register('preset import', fn (array $parameters): CommandResponse => $this->presetImportCommand($parameters));
         $this->context->commands()->register('preset export', fn (array $parameters): CommandResponse => $this->presetExportCommand($parameters));
+        $this->context->commands()->register('preset vars', fn (array $parameters): CommandResponse => $this->presetVarsCommand($parameters));
     }
 
     private function injectParameters(ParserContext $context, array $tokens, string $action): void
@@ -147,6 +153,7 @@ final class PresetAgent
             case 'preset create':
             case 'preset update':
             case 'preset export':
+            case 'preset vars':
                 if ($tokens !== []) {
                     $parameters['slug'] = array_shift($tokens);
                 }
@@ -487,6 +494,98 @@ final class PresetAgent
         return CommandResponse::success('preset export', [
             'path' => $targetPath,
         ], sprintf('Preset "%s" exported to %s.', $slug, $targetPath));
+    }
+
+    private function presetVarsCommand(array $parameters): CommandResponse
+    {
+        $slug = $this->normaliseSlug($parameters['slug'] ?? '');
+        if ($slug === '') {
+            return CommandResponse::error('preset vars', 'Preset slug is required.');
+        }
+
+        $preset = $this->brains->getPreset($slug);
+        if ($preset === null) {
+            return CommandResponse::error('preset vars', sprintf('Preset "%s" not found.', $slug));
+        }
+
+        $meta = isset($preset['meta']) && is_array($preset['meta']) ? $preset['meta'] : [];
+
+        $placeholders = isset($preset['placeholders']) && is_array($preset['placeholders'])
+            ? array_values(array_filter(array_map(
+                static fn ($value): string => trim((string) $value),
+                $preset['placeholders']
+            ), static fn (string $value): bool => $value !== ''))
+            : [];
+
+        $placeholders[] = 'project';
+
+        $placeholderSet = [];
+        foreach ($placeholders as $placeholder) {
+            $placeholderSet[$placeholder] = true;
+        }
+
+        foreach (array_keys($params) as $key) {
+            $placeholderSet['param.' . $key] = true;
+        }
+
+        $placeholders = array_values(array_unique(array_keys($placeholderSet)));
+
+        $params = [];
+        if (isset($preset['params']) && is_array($preset['params'])) {
+            foreach ($preset['params'] as $name => $config) {
+                if (!is_string($name) || trim($name) === '') {
+                    continue;
+                }
+
+                if (!is_array($config)) {
+                    $config = ['default' => $config];
+                }
+
+                $params[$name] = [
+                    'required' => isset($config['required']) ? (bool) $config['required'] : false,
+                    'default' => $config['default'] ?? null,
+                    'description' => isset($config['description']) ? (string) $config['description'] : null,
+                    'type' => isset($config['type']) ? (string) $config['type'] : 'text',
+                ];
+            }
+        }
+
+        $placeholderDetails = [];
+        foreach ($placeholders as $placeholder) {
+            $detail = ['placeholder' => $placeholder, 'type' => 'text'];
+
+            if ($placeholder === 'project') {
+                $detail['source'] = 'project';
+            } elseif (str_starts_with($placeholder, 'param.')) {
+                $name = substr($placeholder, 6);
+                $detail['source'] = 'param';
+                $detail['name'] = $name;
+                $detail['type'] = $params[$name]['type'] ?? 'text';
+                $detail['required'] = $params[$name]['required'] ?? false;
+                if (isset($params[$name]['default'])) {
+                    $detail['default'] = $params[$name]['default'];
+                }
+            } else {
+                $detail['source'] = 'custom';
+            }
+
+            $placeholderDetails[] = $detail;
+        }
+
+        $notes = [
+            'project' => 'Resolved from the project target supplied to `export` (e.g. `export myproject`).',
+            'param.*' => 'Pass values via `--param.<name>=value` (alias `--var.<name>=value`) or JSON payloads under `params`.',
+            'types' => 'Parameter types may be: text, int, number, float, bool, array, object, comma_list (CSV).',
+        ];
+
+        return CommandResponse::success('preset vars', [
+            'slug' => $slug,
+            'layout' => $meta['layout'] ?? self::DEFAULT_LAYOUT,
+            'placeholders' => $placeholders,
+            'placeholder_details' => $placeholderDetails,
+            'params' => $params,
+            'notes' => $notes,
+        ], sprintf('Preset "%s" exposes %d placeholder(s).', $slug, count($placeholders)));
     }
 
     private function ensureDefaults(): void

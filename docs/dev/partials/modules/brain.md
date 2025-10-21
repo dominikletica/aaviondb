@@ -32,7 +32,7 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Brain\BrainAgent` – parser + command registrar.
-- `AavionDB\Storage\BrainRepository` – performs actual filesystem mutations and reporting.
+- `AavionDB\Core\Storage\BrainRepository` – performs actual filesystem mutations and reporting.
 - `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, diagnostics hooks.  
 - `AavionDB\Core\CommandResponse` – wraps every handler result in the unified schema.  
 - `PathLocator` – ensures backup directories exist (invoked inside repository helpers).

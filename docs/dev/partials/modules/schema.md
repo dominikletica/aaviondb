@@ -31,8 +31,8 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Schema\SchemaAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – persistence layer for the `fieldsets` project.  
-- `AavionDB\Schema\SchemaValidator` – JSON Schema validation and normalisation.  
+- `AavionDB\Core\Storage\BrainRepository` – persistence layer for the `fieldsets` project.  
+- `AavionDB\Core\Schema\SchemaValidator` – JSON Schema validation and normalisation.  
 - `AavionDB\Core\Modules\ModuleContext` – command registry, logger, debug helper.  
 - `AavionDB\Core\CommandResponse` – uniform response wrapper for success/error states.
 

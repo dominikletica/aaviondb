@@ -37,19 +37,19 @@
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
 2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation. *(DONE – follow-up: refine restore/reactivation ergonomics and cascade diagnostics.)*
 3. **Configuration upgrades** – Add bulk import/export commands and config audit logging. *(Bulk JSON payload + audit events implemented; file-based import/export skipped by user request.)*
-4. **Export destinations & profiles** – Introduce preset destinations (disk/response), scheduler hooks, and schema-aware/LLM profiles.
-5. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
-6. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
-7. **Security controls** – Implement trusted-client whitelists/bypass policies and enforcement audit logs.
-8. **Auth/API improvements** – Add bootstrap guidance, scoped-role groundwork, and REST telemetry counters.
-9. **Events telemetry** – Extend EventsAgent with emitted-event stats and optional streaming hooks.
-10. **Log storage abstraction** – Allow pluggable/archived log storage to support future UI integrations.
-11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs.
+4. **Filter & Resolver engine** – Ship the reusable filter/query DSL + resolver pipeline (preset/entity/export integration, `[ref …]` expansion, placeholder docs) per `2025-10-21-IDEAS`.
+5. **Export destinations & profiles** – Introduce preset destinations (disk/response) and advanced LLM/schema-aware profiles once the resolver lands.
+6. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
+7. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
+8. **Security controls** – Implement trusted-client whitelists/bypass policies and enforcement audit logs.
+9. **Auth/API improvements** – Add bootstrap guidance, scoped-role groundwork, and REST telemetry counters.
+10. **Events telemetry** – Extend EventsAgent with emitted-event stats and optional streaming hooks.
+11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs (include preset variable discovery).
 12. **SchemaAgent** - Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes (`:<schema>` sets reference to the latest version, `:<schema@<version>>` sets a distinct version). *(DONE – entity `fieldset_version` tracking in place.)*
-13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/delete/copy/import/export`) and link to ExportAgent. *(DONE – PresetAgent + FilterEngine integration; follow-up: advanced layouts & Studio hooks tracked under Step 4/11.)*
+13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/delete/copy/import/export`) and link to ExportAgent. *(DONE – PresetAgent + FilterEngine integration; follow-up tasks captured under Step 4/11.)*
 14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling. *(DONE – hierarchy map + docs shipped; follow-up: subtree move helpers & OpenAPI alignment.)*
-15. **Reference & query syntax** – Implement `[ref @project/entity/field]` resolution with round-trip-safe storage, fallback messages, and future `[query …]` filters (including recursive lookups).
-16. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
+15. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
+16. **Reference & query syntax** – Extended resolver features beyond Step 4 (advanced recursion, query filters, timeline expressions).
 17. **Log verbosity controls** – Review module loggers and add configurable log levels once core modules are stable.
 18. **Fieldset storage review** – Evaluate moving fieldsets/schemas into the system brain for cross-brain reuse.
 19. **Testing plan** – Design and implement the PHPUnit coverage plan (execute last).

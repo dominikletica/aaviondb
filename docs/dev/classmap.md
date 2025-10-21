@@ -6,7 +6,7 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
     - `AavionDB\AavionDB`
       - static _resetForTests(): void
       - static auth(): AavionDB\Core\Security\AuthManager
-      - static brains(): AavionDB\Storage\BrainRepository
+      - static brains(): AavionDB\Core\Storage\BrainRepository
       - static command(string $statement): array
       - static commands(): AavionDB\Core\CommandRegistry
       - static config(): array
@@ -103,7 +103,7 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
     - **Filters**
       - **FilterEngine**
         - `AavionDB\Core\Filters\FilterEngine`
-          - __construct(AavionDB\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger)
+          - __construct(AavionDB\Core\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger)
           - selectEntities(string $projectSlug, array $filters, array $options = []): array
           - passesFilters(string $projectSlug, string $entitySlug, array $filters, array $options = []): bool
     - **Hashing**
@@ -125,7 +125,7 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
         - `AavionDB\Core\Modules\ModuleContext`
           - __construct(AavionDB\Core\Modules\ModuleDescriptor $descriptor, AavionDB\Core\Container $container, AavionDB\Core\CommandRegistry $commands, AavionDB\Core\EventBus $events, AavionDB\Core\Filesystem\PathLocator $paths, Psr\Log\LoggerInterface $logger, array $capabilities)
           - auth(): AavionDB\Core\Security\AuthManager
-          - brains(): AavionDB\Storage\BrainRepository
+          - brains(): AavionDB\Core\Storage\BrainRepository
           - commands(): AavionDB\Core\CommandRegistry
           - container(): AavionDB\Core\Container
           - descriptor(): AavionDB\Core\Modules\ModuleDescriptor
@@ -203,11 +203,11 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
     - **Security**
       - **AuthManager**
         - `AavionDB\Core\Security\AuthManager`
-          - __construct(AavionDB\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger, array $config = [])
+          - __construct(AavionDB\Core\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger, array $config = [])
           - guardRestAccess(?string $token, string $action): array
       - **SecurityManager**
         - `AavionDB\Core\Security\SecurityManager`
-          - __construct(AavionDB\Storage\BrainRepository $brains, AavionDB\Core\Cache\CacheManager $cache, Psr\Log\LoggerInterface $logger)
+          - __construct(AavionDB\Core\Storage\BrainRepository $brains, AavionDB\Core\Cache\CacheManager $cache, Psr\Log\LoggerInterface $logger)
           - ensureDefaults(): void
           - isEnabled(): bool
           - setEnabled(bool $enabled): void
@@ -305,14 +305,14 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
           - register(): void
   - **Schema**
     - **SchemaException**
-      - `AavionDB\Schema\SchemaException`
+      - `AavionDB\Core\Schema\SchemaException`
     - **SchemaValidator**
-      - `AavionDB\Schema\SchemaValidator`
+      - `AavionDB\Core\Schema\SchemaValidator`
         - applySchema(array $payload, array $schema): array
         - assertValidSchema(array $schema): void
   - **Storage**
     - **BrainRepository**
-      - `AavionDB\Storage\BrainRepository`
+      - `AavionDB\Core\Storage\BrainRepository`
         - __construct(AavionDB\Core\Filesystem\PathLocator $paths, AavionDB\Core\EventBus $events, array $options = [])
         - activeBrain(): ?string
         - archiveEntity(string $projectSlug, string $entitySlug): array

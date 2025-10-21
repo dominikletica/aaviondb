@@ -12,9 +12,9 @@
 - `export <slug[,slug…]> [entity[,entity[@version|#hash]]] [description="..."] [usage="..."]`
   - Manual mode; selectors only allowed when targeting a single project.
   - `description` populates meta/guide text; `usage` overrides the guide usage (falls back to `description`).
-- `export <slug> --preset=my-slice [--param.topic=timeline] [description=...] [usage=...]`
+- `export <slug> --preset=my-slice [--param.topic=timeline] [--var.timeline=3] [description=...] [usage=...]`
   - Preset mode; project discovery, entity selection, payload whitelists/blacklists, policies, and layout are defined by the preset.
-  - `${param.*}` placeholders resolve from `--param.*` arguments.
+  - `${param.*}` placeholders resolve from `--param.*` (or the alias `--var.*`) arguments; you may supply multiple variables per command.
 - `export *` – whole-brain export (no selectors).  
 - Presets cannot be combined with manual selectors; the preset fully defines the slice.
 
@@ -28,9 +28,10 @@
    - `buildProjectSlice()` + `buildEntityRecord()` compose flattened entity payloads, applying transform whitelists/blacklists and hierarchy metadata.
    - Aggregates stats/index data and renders the selected layout via `renderLayout()`.
 4. The command returns the rendered payload directly; hashing and persistence are delegated to cache subsystems.
+5. Studio and other clients can call `preset vars <slug>` (via PresetAgent) to discover placeholders, parameter types, defaults, and required flags needed for the export command.
 
 ## Key Collaborators
-- `AavionDB\Storage\BrainRepository` – project/entity metadata, preset/layout storage.
+- `AavionDB\Core\Storage\BrainRepository` – project/entity metadata, preset/layout storage.
 - `AavionDB\Core\Filters\FilterEngine` – shared DSL evaluator for entity/payload filters.
 - `AavionDB\Modules\Preset\PresetAgent` – CLI management for presets (CRUD/import/export) and default bootstrap.
 - `AavionDB\Modules\Preset\PresetValidator` – normalises preset definitions before persistence.

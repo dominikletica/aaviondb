@@ -14,7 +14,7 @@ use AavionDB\Core\Exceptions\CommandException;
 use AavionDB\Core\RuntimeState;
 use AavionDB\Core\Security\AuthManager;
 use AavionDB\Core\Security\SecurityManager;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 
 /**

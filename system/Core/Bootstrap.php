@@ -13,7 +13,7 @@ use AavionDB\Core\Logging\LoggerFactory;
 use AavionDB\Core\Modules\ModuleLoader;
 use AavionDB\Core\Security\AuthManager;
 use AavionDB\Core\Security\SecurityManager;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use Monolog\Level;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;

@@ -8,7 +8,7 @@ use AavionDB\AavionDB;
 use AavionDB\Core\CommandResponse;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use Throwable;
 use function array_shift;

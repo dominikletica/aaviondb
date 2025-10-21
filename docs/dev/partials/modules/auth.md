@@ -27,7 +27,7 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Auth\AuthAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – token storage, scope enforcement, REST enablement.  
+- `AavionDB\Core\Storage\BrainRepository` – token storage, scope enforcement, REST enablement.  
 - `AavionDB\Core\Security\AuthManager` – consumed downstream (API guard) using state generated here.  
 - `AavionDB\Core\Modules\ModuleContext` – provides command registry, logger, and container access (`config`).  
 - `AavionDB\Core\CommandResponse` – unified response wrapper.

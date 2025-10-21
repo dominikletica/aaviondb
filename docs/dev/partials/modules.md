@@ -161,7 +161,7 @@ return [
   - Delegates preset evaluation to `PresetAgent` + `FilterEngine` (entity/payload filters, transforms)
   - TODO: export destinations, scheduler hooks, advanced profiles
 - **`PresetAgent` (`preset`)** – Preset lifecycle management
-  - CLI CRUD for presets (`preset list/show/create/update/delete/copy/import/export`)
+  - CLI CRUD for presets (`preset list/show/create/update/delete/copy/import/export/vars`)
   - Stores presets/layouts in the system brain; seeds default preset + layout on bootstrap
   - Validates definitions (selection DSL, placeholders, policies) via `PresetValidator`
 - **`AuthAgent` (`auth`)** – API token lifecycle

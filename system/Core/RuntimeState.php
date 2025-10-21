@@ -6,7 +6,7 @@ namespace AavionDB\Core;
 
 use DateTimeImmutable;
 use AavionDB\Core\Filesystem\PathLocator;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use AavionDB\Core\Modules\ModuleLoader;
 
 /**

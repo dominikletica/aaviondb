@@ -12,7 +12,7 @@ use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Cache\CacheManager;
 use AavionDB\Core\Security\AuthManager;
 use AavionDB\Core\Security\SecurityManager;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use AavionDB\Core\Logging\ModuleLogger;
 use Psr\Log\LoggerInterface;
 use RuntimeException;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AavionDB\Schema;
+namespace AavionDB\Core\Schema;
 
 use RuntimeException;
 

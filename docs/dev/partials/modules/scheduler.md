@@ -30,7 +30,7 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Scheduler\SchedulerAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – persistence and logging for scheduler tasks.  
+- `AavionDB\Core\Storage\BrainRepository` – persistence and logging for scheduler tasks.  
 - `AavionDB\AavionDB` facade – executes stored commands during cron runs.  
 - `AavionDB\Core\Modules\ModuleContext` – provides command registry, logger, and repository access.  
 - `AavionDB\Core\CommandResponse` – response envelope shared across commands and cron execution.

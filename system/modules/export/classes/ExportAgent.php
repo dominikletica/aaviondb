@@ -8,7 +8,7 @@ use AavionDB\Core\CommandResponse;
 use AavionDB\Core\Filters\FilterEngine;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
-use AavionDB\Storage\BrainRepository;
+use AavionDB\Core\Storage\BrainRepository;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -1175,6 +1175,10 @@ final class ExportAgent
                 $name = substr($key, 6);
             } elseif (str_starts_with($key, 'params.')) {
                 $name = substr($key, 7);
+            } elseif (str_starts_with($key, 'var.')) {
+                $name = substr($key, 4);
+            } elseif (str_starts_with($key, 'vars.')) {
+                $name = substr($key, 5);
             } else {
                 continue;
             }
@@ -1189,6 +1193,15 @@ final class ExportAgent
 
         if (isset($parameters['params']) && is_array($parameters['params'])) {
             foreach ($parameters['params'] as $name => $value) {
+                if (!is_string($name) || trim($name) === '') {
+                    continue;
+                }
+                $result[$name] = $value;
+            }
+        }
+
+        if (isset($parameters['vars']) && is_array($parameters['vars'])) {
+            foreach ($parameters['vars'] as $name => $value) {
                 if (!is_string($name) || trim($name) === '') {
                     continue;
                 }

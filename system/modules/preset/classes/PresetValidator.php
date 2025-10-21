@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use function array_filter;
 use function array_map;
 use function array_values;
+use function in_array;
 use function is_array;
 use function is_numeric;
 use function is_scalar;
@@ -302,6 +303,8 @@ final class PresetValidator
 
         $result = [];
 
+        $allowedTypes = ['text', 'int', 'integer', 'number', 'float', 'bool', 'boolean', 'array', 'object', 'comma_list', 'csv', 'json'];
+
         foreach ($params as $name => $config) {
             if (!is_string($name) || trim($name) === '') {
                 throw new InvalidArgumentException('Parameter names must be non-empty strings.');
@@ -314,16 +317,31 @@ final class PresetValidator
             $required = isset($config['required']) ? (bool) $config['required'] : false;
             $default = $config['default'] ?? null;
 
-        if ($default !== null && !is_scalar($default) && !is_array($default)) {
-            throw new InvalidArgumentException(sprintf('Parameter "%s" has an unsupported default value.', $name));
-        }
+            if ($default !== null && !is_scalar($default) && !is_array($default)) {
+                throw new InvalidArgumentException(sprintf('Parameter "%s" has an unsupported default value.', $name));
+            }
 
-        $description = isset($config['description']) ? trim((string) $config['description']) : null;
+            $description = isset($config['description']) ? trim((string) $config['description']) : null;
 
-        $result[$name] = [
-            'required' => $required,
-            'default' => $default,
+            $type = isset($config['type']) ? strtolower(trim((string) $config['type'])) : 'text';
+            if ($type === 'integer') {
+                $type = 'int';
+            } elseif ($type === 'boolean') {
+                $type = 'bool';
+            } elseif ($type === 'csv') {
+                $type = 'comma_list';
+            }
+
+            if (!in_array($type, $allowedTypes, true)) {
+                $invalid = $config['type'] ?? $type;
+                throw new InvalidArgumentException(sprintf('Parameter "%s" has unsupported type "%s".', $name, $invalid));
+            }
+
+            $result[$name] = [
+                'required' => $required,
+                'default' => $default,
                 'description' => $description,
+                'type' => $type,
             ];
         }
 

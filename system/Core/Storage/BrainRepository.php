@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AavionDB\Storage;
+namespace AavionDB\Core\Storage;
 
 use DateTimeImmutable;
 use AavionDB\AavionDB;
@@ -10,8 +10,8 @@ use AavionDB\Core\EventBus;
 use AavionDB\Core\Exceptions\StorageException;
 use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Hashing\CanonicalJson;
-use AavionDB\Schema\SchemaException;
-use AavionDB\Schema\SchemaValidator;
+use AavionDB\Core\Schema\SchemaException;
+use AavionDB\Core\Schema\SchemaValidator;
 use Ramsey\Uuid\Uuid;
 use function array_filter;
 use function array_key_exists;

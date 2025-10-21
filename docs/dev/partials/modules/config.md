@@ -21,7 +21,7 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Config\ConfigAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – persists configuration entries in user/system brains.  
+- `AavionDB\Core\Storage\BrainRepository` – persists configuration entries in user/system brains.  
 - `AavionDB\Core\Modules\ModuleContext` – supplies command registry and logger.  
 - `AavionDB\Core\CommandResponse` – consistent response wrapper for success/error paths.
 

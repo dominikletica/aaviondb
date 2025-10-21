@@ -27,7 +27,7 @@
 
 ## Key Classes & Collaborators
 - `AavionDB\Modules\Api\ApiAgent` – parser + command registrar.  
-- `AavionDB\Storage\BrainRepository` – persistence for REST enablement, auth state, and metadata.  
+- `AavionDB\Core\Storage\BrainRepository` – persistence for REST enablement, auth state, and metadata.  
 - `AavionDB\Core\Modules\ModuleContext` – exposes command registry, logger, and diagnostics.  
 - `AavionDB\Core\CommandResponse` – unified response object consumed by CLI/REST/PHP routes.
 

@@ -64,6 +64,69 @@ php cli.php "export storyverse --preset=focus-scene --param.scene=intro"
 
 The command automatically resolves the preset, applies filters through the FilterEngine, and renders the bundled layout.
 
+### Inspecting Variables (`preset vars`)
+
+```bash
+php cli.php "preset vars focus-scene"
+```
+
+- Lists placeholders the preset expects (`project`, `${param.scene}`, …).
+- Shows whether parameters are required, default values, and descriptions.
+- Pass values with `--param.<name>=value` or the alias `--var.<name>=value`. Multiple variables per command are supported.
+
+### Default Preset & Layout
+
+The default preset is **read-only**. Copy it before making changes:
+
+```bash
+php cli.php "preset copy default my-custom-slice"
+```
+
+Default preset (`preset show default`):
+
+```json
+{
+  "meta": {
+    "description": "Default context export preset.",
+    "usage": "Exports the current project with canonical entities for LLM ingestion.",
+    "layout": "context-unified-v2",
+    "read_only": true,
+    "immutable": true
+  },
+  "selection": {
+    "projects": ["${project}"],
+    "entities": [],
+    "payload_filters": []
+  },
+  "transform": {
+    "whitelist": [],
+    "blacklist": [],
+    "post": []
+  },
+  "policies": {
+    "references": { "include": true, "depth": 1 },
+    "cache": { "ttl": 3600, "invalidate_on": ["hash", "commit"] }
+  },
+  "placeholders": ["project"],
+  "params": {}
+}
+```
+
+The matching layout (`context-unified-v2`) is stored alongside presets and controls the JSON structure rendered by the exporter. Update it only if you want to change the global output format.
+
+Placeholders recognised by the exporter:
+
+- `project` – always resolves to the project slug that you supply with `export <project>`.
+- `${param.<name>}` – resolved from `--param.<name>=value` or `--var.<name>=value` (multiple variables are supported per command).
+- `${param.<name>}` entries declared inside the preset’s `params` block will appear in `preset vars <slug>` together with their required/default metadata.
+
+### Creating Your Own Preset
+
+1. Copy the default preset: `preset copy default scene-kit`.
+2. Edit the new preset definition via `preset update scene-kit --payload='{...}'` or `preset export` → modify file → `preset import`.
+3. Use `preset vars scene-kit` to confirm which variables must be supplied.
+4. Run the export: `export myproject --preset=scene-kit --param.scene=intro --param.timeline=main`.
+
 ---
 
 ## Example Response (`context-unified-v2`)
@@ -154,3 +217,11 @@ The command automatically resolves the preset, applies filters through the Filte
 ---
 
 Looking for scheduled or automated exports? Continue to [Automation & Scheduler](automation.md).
+- Lege Pflichtfelder, Standardwerte und Typen im `params`-Block des Presets fest. Beispiel:
+
+  ```json
+  "params": {
+    "scene": {"required": true, "type": "text"},
+    "timeline": {"type": "comma_list", "default": "main,flashback"}
+  }
+  ```
