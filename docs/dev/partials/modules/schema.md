@@ -91,9 +91,3 @@ $response = AavionDB::run('schema lint', [
 - Missing fieldset selector → `status=error`, message `Fieldset selector is required.`
 - Unknown schema/version → propagates `StorageException` such as `Schema "character@13" not found in project "fieldsets".`
 - Invalid schema payloads return `status=error` with `SchemaException` message details.
-
-## Outstanding Tasks
-- [x] Persist the resolved schema version (`fieldset_version`) on entities for backwards compatibility when schemas evolve.
-- [ ] Surface schema usage metrics and cross-reference with EntityAgent bindings.
-- [ ] Integrate with future Studio UI for schema editing workflows.
-- [ ] Add PHPUnit coverage for schema commands once the test harness is introduced.

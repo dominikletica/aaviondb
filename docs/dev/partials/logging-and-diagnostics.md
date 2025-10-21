@@ -27,8 +27,3 @@
   - Last failure reason (hash mismatch, canonical mismatch, JSON error, read failure).  
   - Cache metrics (active entries, bytes, expiration backlog).  
 - Integrity failures trigger retry + logging; unrecoverable cases raise `StorageException` which must be caught by callers.
-
-## Planned Enhancements
-- Integrate diagnostics dashboard (UI) with live event stream and log viewer.  
-- Telemetry export (metrics/health endpoints) for automation and monitoring.  
-- Support for remote log sinks (syslog, HTTP) via pluggable handlers.

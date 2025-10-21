@@ -84,9 +84,3 @@ Returns the refreshed project summary plus a list of entities that were reactiva
 - Missing `slug` parameter for `project update/remove/restore/delete/info` yields `status=error` with the corresponding “Parameter "slug" is required.” message.
 - Attempting to restore an already-active project returns `status=error` with `Project "<slug>" is already active.`
 - Hard delete (`project delete`) propagates storage exceptions (e.g. filesystem failures) via `meta.exception`.
-
-## Outstanding Tasks
-- [x] Coordinate with `EntityAgent` for cascade operations (archiving entities on project removal).
-- [x] Provide a `project restore` command for reactivating archived projects (with optional entity reactivation).
-- [ ] Provide optional advanced cascade behaviour (e.g. auto-cleanup or notifications once business rules are defined).
-- [ ] Add PHPUnit coverage for lifecycle and failure scenarios (including restore flows).

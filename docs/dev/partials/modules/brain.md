@@ -79,7 +79,3 @@ $response = AavionDB::run('brain validate', ['slug' => 'default']);
 - Parser handler rewrites human-friendly statements (`brain init foo`) to structured commands + parameters.
 - Backups are stored under `user/backups/`; PathLocator now ensures the directory exists.
 - Diagnostics include footprint metrics (bytes + entity-version count) consumed by CoreAgent `status`.
-
-## Outstanding Tasks
-- [ ] Add additional retention policies (e.g., per-entity thresholds) and compaction metrics.
-- [ ] Add PHPUnit coverage for brain lifecycle, deletion, and maintenance edge cases.

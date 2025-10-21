@@ -88,5 +88,3 @@ $response = AavionDB::run('log', [
 - Non-numeric limit → `status=error`, message `Limit must be a numeric value.`
 - Log file missing → `status=ok`, empty `entries` array, message `Log file not found; no entries to display.`
 - File read errors (permission issues) → `status=error` with `meta.exception` describing the failure.
-
-> Remaining work: optional compression for archives and streamed tailing (see `.codex/NOTES.md`).

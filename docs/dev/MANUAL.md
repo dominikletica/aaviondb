@@ -70,23 +70,9 @@ Each document follows a consistent layout: Responsibilities → Command Surface 
 - [Command Reference](./commands.md) – canonical command syntax (includes aliases and selectors).
 - [Class Map](./classmap.md) – tree of namespaced classes, method signatures, and return types.
 
-### 8. Future Work
+### Tracking Work
 
-Planned enhancements are tracked in [`docs/dev/partials/extending.md`](./partials/extending.md) and `.codex/NOTES.md`. They include:
-
-- Brain maintenance utilities (compaction, repair, retention previews).
-- Cascade hooks between projects and entities.
-- Config import/export with audit logging.
-- Export destinations, scheduler hooks, and schema-aware profiles.
-- Advanced scheduler features (cron expressions, dry-run).
-- Cache warmup helpers for heavy exports.
-- Security whitelists and audit trails.
-- Events streaming and telemetry dashboards.
-- Log storage abstraction.
-- UiAgent scaffolding for AavionStudio.
-- Comprehensive PHPUnit coverage once core features stabilise.
-
----
+Worklogs, planned enhancements, and outstanding TODOs are tracked centrally in [`.codex/NOTES.md`](../../.codex/NOTES.md).
 
 ## 🔗 Related Resources
 

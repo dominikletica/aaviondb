@@ -36,7 +36,3 @@
 - Uses `BrainRepository::systemAuthState()` for readiness checks and telemetry, and `setApiEnabled()` to toggle availability.
 - `api serve` aborts if no active tokens exist, prompting operators to run `auth grant`.
 - Commands log notable transitions (`notice` level) through the shared PSR-3 logger.
-
-## Outstanding Tasks
-- [ ] Extend telemetry with rolling request counters once REST rate tracking is implemented.
-- [ ] Integrate with the future Scheduler/Log agents for automated enable/disable windows.

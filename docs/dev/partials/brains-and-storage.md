@@ -34,9 +34,4 @@
 - Security snapshot: API enabled flag, bootstrap status, token counters, last REST access timestamps.  
 - Cache snapshot: entry statistics, TTL, last purge timestamp.
 
-This feeds `AavionDB::diagnose()` output and future diagnostics dashboards.
-
-## Outstanding Work
-- Add compaction routines (compress historical versions, optional relocation).  
-- Implement dry-run preview for `brain cleanup`.  
-- Persist integrity metrics per brain for historical tracking.
+This feeds `AavionDB::diagnose()` output.

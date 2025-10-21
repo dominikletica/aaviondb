@@ -66,8 +66,3 @@ AavionDB::run('cron');
 - Duplicate slugs raise `Scheduler task "<slug>" already exists.`
 - Unknown slugs for edit/remove throw `Scheduler task "<slug>" does not exist.` (propagated via `status=error`).
 - Cron execution captures unexpected exceptions per task and records them in the log entry (status `error`, message set to exception text).
-
-## Outstanding Tasks
-- [ ] Extend with retention policies / dry-run mode (e.g., preview tasks without execution).
-- [ ] Consider time-based scheduling (cron expressions) or priority queues.
-- [ ] Add PHPUnit coverage for add/edit/remove/cron/log flows.

@@ -38,7 +38,3 @@ php cli.php "events listeners"
 ```bash
 curl "https://example.test/api.php?action=events&subcommand=listeners"
 ```
-
-## Outstanding Tasks
-- [ ] Expand telemetry (recent events, emit counters, listener origins).
-- [ ] Add optional streaming/subscription support for the Studio UI.

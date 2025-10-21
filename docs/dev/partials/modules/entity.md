@@ -125,8 +125,3 @@ $response = AavionDB::run('entity save', [
 - Hierarchy validation problems (cycle attempts, missing parents, depth truncation) and cascade results are surfaced as `warnings` inside both the response payload and `meta.warnings`; callers should display or log them.
 - Unsupported move modes return `status=error` with the message `Unsupported mode "..." (use merge or replace).`.
 - REST responses mirror CLI behaviour via `CommandResponse` objects.
-
-## Outstanding Tasks
-- [x] Add cascade hooks so ProjectAgent can trigger entity archives automatically when needed.
-- [ ] Provide hierarchy introspection helpers (e.g. list subtree, move subtree) once requirements are finalised.
-- [ ] Add PHPUnit coverage (list/save/delete/restore scenarios, invalid references, schema failures, hierarchy edge cases).

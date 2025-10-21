@@ -46,7 +46,3 @@ BrainRepository validates every read/write request against the active scope and 
 - Admin secret (from `config.php`) bypasses token checks but is logged; scopes are stored alongside hashed tokens.
 - `api.php` executes commands within the granted scope, ensuring storage lookups respect project filters.
 - `BrainRepository` tracks token metadata, touches usage timestamps, and rejects unauthorized access based on scope.
-
-## Outstanding Tasks
-- [ ] Implement API serve/stop commands (will reside in ApiAgent but interacts with auth state).
-- [ ] Prepare PHPUnit coverage for grant/revoke/reset paths and error cases.

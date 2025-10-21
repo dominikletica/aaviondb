@@ -22,9 +22,3 @@
 ## Parsing
 - `CommandParser` interprets human-readable statements, supports JSON payloads, quotes, module-specific handlers.  
 - Parser errors raise `CommandException` which callers must catch and convert into user-friendly messages.
-
-## Future Work
-- Permissions per command (role/key-based).  
-- Structured metadata for auto-generated docs/help.  
-- Batch/transaction support for grouped commands.  
-- Passive command profiling hooks for performance tuning.

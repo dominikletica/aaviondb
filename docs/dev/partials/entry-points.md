@@ -14,5 +14,4 @@
 - REST rejects requests while `system.brain.api.enabled = false` or when only the bootstrap key exists.  
 - Clients must pass a token via `Authorization: Bearer <token>` (fallback: `X-API-Key`, `token`/`api_key` query parameters). Bootstrap token `admin` is blocked for REST.  
 - CLI/embedded modes bypass API keys but still log operations.  
-- `AavionDB::isBooted()` lets long-running PHP processes avoid redundant bootstrap calls.  
-- Future consolidation: single entry script deciding mode by SAPI (`cli` vs web) to reduce duplication.
+- `AavionDB::isBooted()` lets long-running PHP processes avoid redundant bootstrap calls.

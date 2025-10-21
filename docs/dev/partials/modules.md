@@ -159,7 +159,6 @@ return [
   - Handles `export <project|*> [entities] [--preset=slug] [--param.foo=value]`
   - Builds flattened `context-unified-v2` payloads (meta/guide/policies/index/entities/stats)
   - Delegates preset evaluation to `PresetAgent` + `FilterEngine` (entity/payload filters, transforms)
-  - TODO: export destinations, scheduler hooks, advanced profiles
 - **`PresetAgent` (`preset`)** – Preset lifecycle management
   - CLI CRUD for presets (`preset list/show/create/update/delete/copy/import/export/vars`)
   - Stores presets/layouts in the system brain; seeds default preset + layout on bootstrap
@@ -179,21 +178,17 @@ return [
 - **`LogAgent` (`log`)** – Operational log access
   - Commands: log view/rotate/cleanup
   - Expose auth/log diagnostics and manage log archives
-  - Future: log streaming
 - **`EventsAgent` (`events`)** – Event bus inspection
   - List listeners registered on the EventBus
   - Provide basic diagnostics for listener counts
-  - Future: emitted-event telemetry and live feed endpoints
 - **`SchedulerAgent` (`scheduler`)** – Scheduled job orchestration
   - Manage scheduler tasks (`scheduler add/edit/remove/list/log`)
   - Execute queued commands via `cron` (REST/CLI, optional `--keep` cleanup integration)
-  - TODO: extended retention policies, custom runners
 - **`SecurityAgent` (`security`)** – Rate limiting & lockdown management
   - Control security toggles, manual lockdowns, and purge cached counters/blocks
   - REST enforcement via `SecurityManager` (per-client/global/failure buckets + `Retry-After` headers)
   - Surface cache telemetry (entries/bytes/tag distribution) for security rate limits
 
-> Implementation TODOs are tracked centrally in `.codex/NOTES.md`.
 
 ### Module Documentation Index
 - [`modules/core.md`](./modules/core.md) – CoreAgent details
@@ -211,8 +206,3 @@ return [
 - [`modules/events.md`](./modules/events.md) – EventsAgent *(draft)*
 - [`modules/scheduler.md`](./modules/scheduler.md) – SchedulerAgent *(draft)*
 - [`modules/security.md`](./modules/security.md) – SecurityAgent
-
-## Future Work
-- Expand capability matrix (granular read/write separation, filesystem/network access) and introduce policy configuration per deployment.  
-- Hot-reload support by re-running `discover()` and module-specific teardown hooks.  
-- Optional “provides”/“conflicts” metadata for richer dependency graphs and feature negotiation.

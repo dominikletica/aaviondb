@@ -62,8 +62,3 @@ $response = AavionDB::run('get', [
 - Malformed JSON payloads (bulk or value) return `status=error` with the JSON parser message.
 - Exceptions from storage propagate as `status=error` responses with diagnostics metadata.
 - Bulk updates report skipped entries (empty keys) via the `warnings` array in the response.
-
-## Outstanding Tasks
-- [ ] Add bulk import/export helpers (e.g. load from JSON file).
-- [ ] Expose history/audit trail for config changes.
-- [ ] Provide namespaced key suggestions and validation heuristics.

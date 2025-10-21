@@ -14,4 +14,3 @@ Guidelines:
 - Always return `CommandResponse`-compatible arrays (`status`, `message`, `data`, `meta`).  
 - Log errors rather than throwing, unless interacting with low-level storage or security APIs (caller must handle).  
 - Document new commands in `docs/dev/commands.md` and surface user-facing behaviour in the user manual.  
-- Update `.codex/NOTES.md` with TODOs and roadmap entries for larger additions.

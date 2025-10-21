@@ -70,5 +70,3 @@ curl -H "Authorization: Bearer <token>" \
 - Invalid TTL (`cache ttl foo`) → `status=error`, message `TTL requires a numeric value (seconds).`
 - Non-positive TTL → `status=error`, message `TTL must be greater than zero.`
 - Unknown subcommand → `status=error`, message `Unknown cache subcommand "foo".`
-
-> Planned follow-ups: optional cache warmup helpers (see `.codex/NOTES.md`).

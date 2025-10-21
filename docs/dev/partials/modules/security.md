@@ -75,5 +75,3 @@ curl -H "Authorization: Bearer <token>" \
 - Invalid lockdown duration (`security lockdown foo`) → `status=error`, message `Lockdown duration must be a numeric value (seconds).`
 - Non-positive duration → `status=error`, message `Lockdown duration must be greater than zero seconds.`
 - Unknown subcommand → `status=error`, message `Unknown security subcommand "foo".`
-
-> Upcoming work: whitelisting/allow-list management and deeper audit logging (see `.codex/NOTES.md`).

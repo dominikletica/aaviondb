@@ -107,7 +107,6 @@ system/
 - `RuntimeState::diagnostics()` aggregates filesystem paths, command counts, module states, cache/security telemetry, and export statistics.  
 - Each module contributes via `ModuleContext::diagnostics()` callbacks.  
 - Debug logs follow the `source=<module>` convention for LogAgent filtering.  
-- Planned enhancements: diagnostic snapshots persisted per brain and integration with AavionStudio dashboards.
 
 ---
 
@@ -130,10 +129,3 @@ system/
 - `aaviondb.php` – PHP entry point that loads Composer, bootstraps once per request, and exposes helper functions for embedding AavionDB into other applications.
 
 ---
-
-## Roadmap Notes
-
-- Expand sandbox metadata (`provides`, `conflicts`) to allow module capability negotiation.  
-- Persist diagnostic snapshots for UI visualisation.  
-- Harden bootstrap error reporting for headless environments (CLI exit codes + REST meta flags).  
-- Add PHPUnit coverage for bootstrap regression protection.

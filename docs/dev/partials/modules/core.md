@@ -69,7 +69,3 @@ $response = AavionDB::run('help', ['command' => 'project create']);
 - Delivered via `system/modules/core`; `CoreAgent` registers handlers in `module.php`.
 - System module capabilities: `commands.register`, `parser.extend`, `events.dispatch`, `paths.read`, `logger.use`.
 - Responses leverage `CommandResponse` for consistent schema.
-
-## Outstanding Tasks
-- [ ] Extend `help` output once other modules provide richer metadata/usage examples.
-- [ ] Add PHPUnit coverage (status/help edge cases, unknown command handling).
