@@ -7,10 +7,11 @@
 - Provide lightweight `set` / `get` commands to mutate or inspect configuration values.
 - Support both active user brain and system brain through the `--system` flag.
 - Parse scalar and JSON values conveniently (booleans, numbers, `null`, JSON objects/arrays).
+- Accept bulk updates via JSON payloads to synchronise multiple keys in one call.
 
 ## Commands
-- `set <key> [value] [--system=1]` – Store a configuration value. Omitting `value` removes the key. Accepts JSON payload (via `{}` or `[]` literal or CLI payload) for complex structures.
-- `get [key] [--system=1]` – Retrieve a specific value or list all entries when no key is provided.
+- `set <key> [value] [--system=1]` – Store a configuration value. Omitting `value` removes the key. Accepts JSON payload (via `{}` or `[]`) for complex structures. Passing a JSON object payload without a key performs a bulk update (multiple keys processed in one call; `null` deletes a key).
+- `get [key|*] [--system=1]` – Retrieve a specific value or list all entries when no key is provided (`*` explicitly requests all keys).
 
 ## Call Flow
 - `system/modules/config/module.php` instantiates `AavionDB\Modules\Config\ConfigAgent` and calls `register()`.  
@@ -28,7 +29,7 @@
 - Module resides in `system/modules/config`. Capabilities include storage read/write and parser hooks.
 - Parser recognises top-level `set` / `get` commands; inline `--system` flag toggles system brain mutations/reads.
 - Values are normalised before persisting: strings representing booleans/numbers/null are cast; JSON literals are decoded; otherwise raw strings are stored.
-- Deleting a key wraps `BrainRepository::deleteConfigValue()`; updates call `setConfigValue()`.
+- Bulk payloads (JSON objects) are decoded server-side; each entry is validated, written, or removed (`null`), and aggregate results are returned.
 
 ## Examples
 
@@ -36,8 +37,10 @@
 ```bash
 php cli.php "set welcome_message \"Hello Traveller\""
 php cli.php "set features {\"beta\":true,\"quota\":5}"
+php cli.php "set {\"feature.alpha\":true,\"feature.beta\":false}"   # bulk update
+php cli.php "set {\"feature.alpha\":null}"                            # bulk delete via null
 php cli.php "get features"
-php cli.php "get"
+php cli.php "get *"
 php cli.php "set maintenance --system"
 php cli.php "get --system"
 ```
@@ -56,7 +59,9 @@ $response = AavionDB::run('get', [
 
 ## Error Handling
 - Missing key on `set` -> `status=error`, message `Configuration key is required.`
+- Malformed JSON payloads (bulk or value) return `status=error` with the JSON parser message.
 - Exceptions from storage propagate as `status=error` responses with diagnostics metadata.
+- Bulk updates report skipped entries (empty keys) via the `warnings` array in the response.
 
 ## Outstanding Tasks
 - [ ] Add bulk import/export helpers (e.g. load from JSON file).

@@ -8,12 +8,17 @@ Tune framework behaviour and inspect runtime state with a few helper commands. A
 
 Use the `set` command to store lightweight settings such as feature toggles or custom messages.
 
+- `set <key> <value>` setzt einzelne Einträge.
+- `set {"key":"value", ...}` verarbeitet mehrere Einträge in einem Rutsch.
+
 ```bash
 php cli.php 'set welcome_message "Hello Traveller"'
 php cli.php 'set features {"beta":true,"quota":5}'
+php cli.php 'set {"feature.alpha":true,"feature.beta":false}'
+php cli.php 'set {"feature.alpha":null}'   # löscht feature.alpha über Bulk-Payload
 ```
 
-- Omitting the value deletes the key: `php cli.php "set welcome_message"`.
+- Omitting the value deletes the key: `php cli.php "set welcome_message"` (oder Bulk mit `null`).
 - To write into the system brain (shared across all projects), add `--system`:
 
 ```bash
@@ -43,6 +48,7 @@ $response = AavionDB::run('set', [
 
 ```bash
 php cli.php "get"             # list every key in the active brain
+php cli.php "get *"           # explizit alle Keys zurückgeben
 php cli.php "get features"    # show one specific key
 php cli.php "get --system"    # list system-wide keys
 ```

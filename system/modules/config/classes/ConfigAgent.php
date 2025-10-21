@@ -103,10 +103,15 @@ final class ConfigAgent
                 continue;
             }
 
-            if ($key === null) {
-                $key = $token;
+        if ($key === null) {
+            if ($this->looksLikeJsonObject($token)) {
+                $parameters['value'] = $token;
                 continue;
             }
+
+            $key = $token;
+            continue;
+        }
 
             $valueParts[] = $token;
         }
@@ -152,14 +157,107 @@ final class ConfigAgent
     private function setCommand(array $parameters): CommandResponse
     {
         $key = isset($parameters['key']) ? trim((string) $parameters['key']) : '';
-        if ($key === '') {
-            return CommandResponse::error('set', 'Configuration key is required.');
-        }
 
         $system = $this->toBool($parameters['system'] ?? false);
 
         $valueProvided = false;
         $value = null;
+
+        $bulkEntries = null;
+
+        if (isset($parameters['payload']) && is_array($parameters['payload']) && $key === '') {
+            $bulkEntries = $parameters['payload'];
+        } elseif ($key === '' && isset($parameters['value']) && is_string($parameters['value'])) {
+            $decoded = $this->decodeJsonObject($parameters['value']);
+            if ($decoded !== null) {
+                $bulkEntries = $decoded;
+            }
+        }
+
+        if ($bulkEntries !== null) {
+            if ($bulkEntries === []) {
+                return CommandResponse::success('set', [
+                    'system' => $system,
+                    'count' => 0,
+                    'entries' => [],
+                ], sprintf('No config entries provided%s.', $system ? ' (system)' : ''));
+            }
+
+            $results = [];
+            $warnings = [];
+
+            try {
+                foreach ($bulkEntries as $entryKey => $entryValue) {
+                    $normalizedKey = trim((string) $entryKey);
+                    if ($normalizedKey === '') {
+                        $warnings[] = 'Skipped entry with empty config key.';
+                        continue;
+                    }
+
+                    if ($entryValue === null) {
+                        $this->brains->deleteConfigValue($normalizedKey, $system);
+                        $this->emitConfigEvent('config.key.deleted', [
+                            'key' => $normalizedKey,
+                            'system' => $system,
+                        ]);
+                        $results[] = [
+                            'key' => $normalizedKey,
+                            'deleted' => true,
+                        ];
+                        continue;
+                    }
+
+                    if (is_string($entryValue)) {
+                        $entryValue = $this->normalizeScalar($entryValue);
+                    }
+
+                    $this->brains->setConfigValue($normalizedKey, $entryValue, $system);
+                    $this->emitConfigEvent('config.key.updated', [
+                        'key' => $normalizedKey,
+                        'system' => $system,
+                        'value' => $entryValue,
+                    ]);
+                    $results[] = [
+                        'key' => $normalizedKey,
+                        'value' => $entryValue,
+                        'deleted' => false,
+                    ];
+                }
+            } catch (Throwable $exception) {
+                $this->logger->error('Failed to set config values (bulk)', [
+                    'system' => $system,
+                    'exception' => $exception,
+                ]);
+
+                return CommandResponse::error('set', $exception->getMessage(), [
+                    'exception' => [
+                        'message' => $exception->getMessage(),
+                        'type' => get_class($exception),
+                    ],
+                ]);
+            }
+
+            $meta = [];
+            if ($warnings !== []) {
+                $meta['warnings'] = $warnings;
+            }
+
+            return CommandResponse::success('set', [
+                'system' => $system,
+                'count' => count($results),
+                'entries' => $results,
+                'warnings' => $warnings,
+            ], sprintf(
+                'Updated %d config entr%s%s.',
+                count($results),
+                count($results) === 1 ? 'y' : 'ies',
+                $system ? ' (system)' : ''
+            ), $meta);
+        }
+
+        if ($key === '') {
+            return CommandResponse::error('set', 'Configuration key is required.');
+        }
 
         if (isset($parameters['payload']) && is_array($parameters['payload'])) {
             $valueProvided = true;
@@ -172,6 +270,10 @@ final class ConfigAgent
         try {
             if (!$valueProvided) {
                 $this->brains->deleteConfigValue($key, $system);
+                $this->emitConfigEvent('config.key.deleted', [
+                    'key' => $key,
+                    'system' => $system,
+                ]);
 
                 return CommandResponse::success('set', [
                     'key' => $key,
@@ -181,6 +283,11 @@ final class ConfigAgent
             }
 
             $this->brains->setConfigValue($key, $value, $system);
+            $this->emitConfigEvent('config.key.updated', [
+                'key' => $key,
+                'system' => $system,
+                'value' => $value,
+            ]);
 
             return CommandResponse::success('set', [
                 'key' => $key,
@@ -207,6 +314,9 @@ final class ConfigAgent
     {
         $system = $this->toBool($parameters['system'] ?? false);
         $key = isset($parameters['key']) ? trim((string) $parameters['key']) : '';
+        if ($key === '*') {
+            $key = '';
+        }
 
         try {
             if ($key === '') {
@@ -251,6 +361,29 @@ final class ConfigAgent
         }
     }
 
+    private function looksLikeJsonObject(string $value): bool
+    {
+        $trimmed = trim($value);
+        return $trimmed !== '' && str_starts_with($trimmed, '{') && str_ends_with($trimmed, '}');
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function decodeJsonObject(string $value): ?array
+    {
+        if (!$this->looksLikeJsonObject($value)) {
+            return null;
+        }
+
+        $decoded = json_decode(trim($value), true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            return null;
+        }
+
+        return $decoded;
+    }
+
     private function normalizeScalar(string $value): mixed
     {
         $trimmed = trim($value);
@@ -286,6 +419,18 @@ final class ConfigAgent
         }
 
         return $value;
+    }
+
+    private function emitConfigEvent(string $event, array $payload): void
+    {
+        $payload['timestamp'] = date(DATE_ATOM);
+        $payload['source'] = 'config';
+        $payload['context'] = [
+            'initiator' => $this->context->initiator(),
+        ];
+
+        $this->context->events()->emit($event, $payload);
+        $this->logger->info(sprintf('Config event: %s', $event), $payload);
     }
 
     private function toBool(mixed $value): bool

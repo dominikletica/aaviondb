@@ -35,7 +35,7 @@
 ### Roadmap to Alpha (pre-tests)
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
 2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation. *(DONE – follow-up: refine restore/reactivation ergonomics and cascade diagnostics.)*
-3. **Configuration upgrades** – Add bulk import/export commands and config audit logging.
+3. **Configuration upgrades** – Add bulk import/export commands and config audit logging. *(Bulk JSON payload + audit events implemented; file-based import/export pending.)*
 4. **Export destinations & profiles** – Introduce preset destinations (disk/response), scheduler hooks, and schema-aware/LLM profiles.
 5. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
 6. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
@@ -44,12 +44,14 @@
 9. **Events telemetry** – Extend EventsAgent with emitted-event stats and optional streaming hooks.
 10. **Log storage abstraction** – Allow pluggable/archived log storage to support future UI integrations.
 11. **UiAgent stubs** – Flesh out Studio integration hooks and console stubs.
-12. **SchemaAgent** - Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes (`:<schema>` sets reference to the latest version, `:<schema@<version>>` sets a distinct version).
+12. **SchemaAgent** - Force schema-version to be referenced inside an entity to be backwards-compatible when a schema changes (`:<schema>` sets reference to the latest version, `:<schema@<version>>` sets a distinct version). *(DONE – entity `fieldset_version` tracking in place.)*
 13. **Preset management agent** – Persist export presets inside brains with full CRUD (`preset list/show/create/update/save/delete`) and link to ExportAgent.
 14. **Entity hierarchy support** – Introduce parent/child relationships, cascading selectors, and documentation for hierarchical data modelling. *(DONE – hierarchy map + docs shipped; follow-up: subtree move helpers & OpenAPI alignment.)*
 15. **Reference & query syntax** – Implement `[ref @project/entity/field]` resolution with round-trip-safe storage, fallback messages, and future `[query …]` filters (including recursive lookups).
 16. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
-17. **Testing plan** – Design and implement the PHPUnit coverage plan (execute last).
+17. **OpenAPI resource mode** – Extend API layer with a read/write resource interface compatible with OpenAPI tooling (no command execution; CRUD-focused endpoints for external clients).
+18. **Log verbosity controls** – Review module loggers and add configurable log levels once core modules are stable.
+19. **Testing plan** – Design and implement the PHPUnit coverage plan (execute last).
 
 ## 2025-10-17
 
@@ -174,3 +176,5 @@
 - Handbücher (User/Dev) und Referenzen (`commands`, `classmap`) mit den neuen Befehlen (`entity move`, payloadlose Reparentings) synchronisiert; erledigte TODOs entfernt.
 - Schema-Persistenz erweitert: `BrainRepository::resolveSchemaDefinition()` liefert Version/Commit; Entities speichern `fieldset_version`, Commits/Listen enthalten diese Metadaten; User-Doku erläutert, dass Saves standardmäßig die bestehende Schemarevision weiterverwenden.
 - Prüfte Module-Dokumentation auf offene Punkte; Roadmap bleibt bei Schritt 3 (Config-Agent – Bulk Import/Export & Audit Logging).
+- Config-Agent modernisiert: Bulk-Updates über JSON-Payload, `get *` alias, Doku & Beispiele aktualisiert. Audit-Logging/Bulk-Import weiterhin offen für Schritt 3.
+- Config-Agent ergänzt um Audit-Events (`config.key.updated/deleted`) inkl. Log-Ausgabe; Bulk-Update Logik schreibt pro Key einen Eintrag.

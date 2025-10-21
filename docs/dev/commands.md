@@ -92,7 +92,7 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `disable` – Disable rate limiting and purge security cache (`security disable`).
     - `lockdown` – Trigger a manual lockdown (`security lockdown [seconds]`).
     - `purge` – Remove cached security artefacts (`security purge`).
-- `set` – Alias for `config set`.
+- `set` – Alias for `config set` (supports single key/value or bulk JSON payloads).
 - `show` – Alias for entity show.
 - `status` – Alias for core status snapshot (`status`).
 - `events`
