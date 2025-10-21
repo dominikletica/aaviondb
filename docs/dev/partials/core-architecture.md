@@ -1,7 +1,7 @@
 # Core Architecture
 
-> **Status:** Maintained  
-> **Scope:** Runtime blueprint, service layout, and orchestration rules.
+> **Status:** Maintained - Runtime blueprint, service layout, and orchestration rules.  
+> **Last updated:** 2025-10-18
 
 ---
 

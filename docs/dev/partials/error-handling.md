@@ -1,6 +1,7 @@
 # Error Handling
 
-> Status: Implemented – consolidated overview of response envelopes and error semantics.
+> **Status:** Implemented – consolidated overview of response envelopes and error semantics.  
+> **Last updated:** 2025-10-18
 
 ## Response Envelope
 - Every command (CLI/PHP/REST) returns the `CommandResponse` structure:

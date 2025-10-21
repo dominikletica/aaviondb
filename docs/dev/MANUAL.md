@@ -3,6 +3,7 @@
 > **Audience:** Module authors, core contributors, and maintainers  
 > **Location:** `/docs/dev/MANUAL.md`  
 > **Companion Guide:** [User Manual](../user/MANUAL.md)
+> **Maintainer:** Dominik Letica & @codex
 
 This manual acts as the technical reference for AavionDB. It explains architecture decisions, call flows, module responsibilities, and integration points. Each section links to detailed partials that can be maintained independently.
 
