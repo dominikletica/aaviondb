@@ -181,7 +181,7 @@
 - Updated README, user manual, developer module docs, command reference, and class map to explain hierarchy usage, recursion flags, and the outstanding need for a `project restore` command.
 - Roadmap Step 2 and Step 14 marked complete (follow-up tasks captured); Module checklist now tracks open work for project restore/unarchive and hierarchy tooling helpers.
 - Added `project restore` with optional entity reactivation, plus hierarchy-aware filtering for `entity list`/`list entities`. Documentation + classmap/commands refreshed; TODOs now focus on subtree move helpers and advanced cascade refinements.
-- Implemented `entity move` (deterministic subtree relocation) und `entity save --parent` ohne Payload für Einzel-Reparenting. README, Manuals, Commands und Classmap aktualisiert; offen bleibt lediglich bessere Hierarchie-Diagnostik (z. B. Move-Impact-Previews).
+- Implemented `entity move` (deterministic subtree relocation) and `entity save --parent` without payload for single reparenting. README, manuals, commands, and class map updated; pending follow-up: richer hierarchy diagnostics (e.g. move impact previews).
 
 ## 2025-10-21 – Midday Session
 
