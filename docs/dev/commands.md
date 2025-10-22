@@ -47,7 +47,7 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `save` – Persist a (possibly merged) payload or reparent an entity (`entity save <project> <entity-path[@version|#commit][:fieldset[@version|#commit]]> {json} [--parent=path]`).
     - `show` – Show the active or selected version (`entity show <project> <entity> [@version|#commit]`). Resolver shortcodes are expanded before the payload is returned.
     - `versions` – List versions for an entity (`entity versions <project> <entity>`).
-- `export` – Generate `context-unified-v2` bundles (`export <project|*> [entities] [--preset=slug] [--param.foo=value|--var.foo=value] [description="..."] [usage="..."]`). Resolver shortcodes are expanded as part of the export pipeline.
+- `export` – Generate preset-driven exports (default `context-unified`) (`export <project|*> [entities] [--preset=slug] [--param.foo=value|--var.foo=value] [--path=...] [--format=json|jsonl|markdown|text] [--save=0|1] [--response=0|1] [--nest_children=0|1] [description="..."] [usage="..."]`). Resolver shortcodes are expanded before rendering.
 - `resolve` – Expand a single `[ref]`/`[query]` shortcode in the context of an entity (`resolve [shortcode] --source=project.entity[@version|#commit] [--param.foo=value]`).
 - `preset`
     - `list` – List presets stored in the system brain (`preset list`).

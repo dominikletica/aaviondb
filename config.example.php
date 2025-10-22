@@ -12,10 +12,6 @@ return [
     'exports_path' => 'user/exports',
     'log_path' => 'system/storage/logs',
 
-    // Export behaviour: send JSON payload in response, and/or persist to disk.
-    'response_exports' => true,
-    'save_exports' => true,
-
     // API key generation parameters.
     'api_key_length' => 16,
 ];

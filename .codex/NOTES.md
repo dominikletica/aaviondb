@@ -20,7 +20,7 @@
 - **ProjectAgent (`project`)**: [x] Lifecycle commands; [x] metadata updates; [x] cascade coordination; [x] restore/unarchive support; [ ] advanced cascade options (auto cleanup/notifications); [ ] PHPUnit coverage for lifecycle/restore.
 - **EntityAgent (`entity`)**: [x] CRUD & selectors; [x] cascade coordination; [x] hierarchy listing/move; [x] incremental `save` merges with schema validation; [ ] hierarchy diagnostics/subtree helpers; [ ] extended historic schema reference support; [ ] PHPUnit coverage (schema/hierarchy edge cases).
 - **ConfigAgent (`config`)**: [x] `set`/`get` commands; [ ] file/payload import-export workflows; [ ] audit log for configuration changes; [ ] namespaced key suggestions and validation.
-- **ExportAgent (`export`)**: [x] CLI/REST exports; [x] preset-driven selection & transforms; [x] regex payload filters; [ ] destinations & scheduler hooks; [ ] advanced LLM/schema profiles.
+- **ExportAgent (`export`)**: [x] CLI/REST exports; [x] preset-driven selection & transforms; [x] regex payload filters; [x] destination overrides & file persistence; [ ] Studio-tailored alias coverage (via UIAgent); [ ] advanced LLM/schema profiles.
 - **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] audit logging and bootstrap guidance; [ ] scoped key/role management; [ ] PHPUnit coverage (grant/revoke/reset).
 - **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] rolling request telemetry; [ ] scheduler/log automation for maintenance windows; [ ] batched/async execution hooks.
 - **UiAgent (`ui`)**: [ ] Studio integration hooks (UI lookup/load/validate/save aliases, resolver-aware lookups, non-resolved entity access, draft space); [ ] optional console tooling; [ ] asset and security documentation for external UIs.
@@ -30,7 +30,7 @@
 - **CacheAgent (`cache`)**: [x] Enable/disable/ttl/purge; [x] tag diagnostics; [ ] cache warm-up helpers for heavy exports.
 - **SecurityAgent (`security`)**: [x] Rate limiting + lockdown + purge; [ ] trusted-client allow lists/bypass rules; [ ] audit trail integration.
 - **SchemaAgent (`schema`)**: [x] List/show/lint/create/update/delete; [ ] Studio integration hooks; [ ] schema usage metrics; [ ] PHPUnit coverage.
-- **PresetAgent (`preset`)**: [x] CLI CRUD/import/export/vars; [x] default preset/layout bootstrap; [ ] richer preset/layout library and Studio integration guidance.
+- **PresetAgent (`preset`)**: [x] CLI CRUD/import/export/vars; [x] default JSON/JSONL/Markdown/Text presets seeded; [ ] Studio integration guidance (UIAgent hooks, template packs) and translation readiness review.
 - **ResolverAgent (`resolver`)**: [x] Single-shot shortcode resolution; [ ] diagnostics (lint/report) and batch tooling.
 
 ### Roadmap to Alpha (pre-tests)
@@ -38,7 +38,7 @@
 2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation. *(DONE – follow-up: refine restore/reactivation ergonomics and cascade diagnostics.)*
 3. **Configuration upgrades** – Add bulk import/export commands and config audit logging. *(Bulk JSON payload + audit events implemented; file-based import/export skipped by user request.)*
 4. **Filter & Resolver engine** – Ship the reusable filter/query DSL + resolver pipeline (preset/entity/export integration, `[ref …]` expansion, placeholder docs) per `2025-10-21-IDEAS`. *(DONE – ResolverEngine resolves `[ref]/[query]` in entity show & exports; shortcode docs live under `docs/dev/partials/resolver-and-shortcodes.md`.)*
-5. **Export destinations & profiles** – Introduce preset destinations (disk/response) and advanced LLM/schema-aware profiles once the resolver lands.
+5. **Export destinations & profiles** – Introduce preset destinations (disk/response) and advanced LLM/schema-aware profiles once the resolver lands. *(DONE – destination overrides, system defaults, JSON/JSONL/Markdown/Text presets, missing-field policies, nest_children rendering; follow-up: document Studio alias usage and extend profile examples as needed.)*
 6. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
 7. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
 8. **Security controls** – Implement trusted-client whitelists/bypass policies and enforcement audit logs.
@@ -58,6 +58,7 @@
 - Resolver/query engine for contextual references (roadmap steps 4 & 16).
 - Export destinations and scheduler integrations (steps 5 & 6).
 - Studio-focused UI/UX enhancements (preset variable discovery, schema editors).
+- Translation readiness: audit command and error messages for language packs (UIAgent/Studio).
 - Version diff tooling, soft-delete policies, and signed cross-brain import/export.
 - Extended module lifecycle features (capability matrix, hot reload, provides/conflicts metadata).
 - Parser/command-registry improvements (roles, structured metadata, batching, profiling hooks).
@@ -208,3 +209,12 @@
 - Added `ResolverAgent` with `resolve [shortcode] --source=project.entity[@version|#commit]` for quick CLI/REST previews, sharing parameter logic with ExportAgent.
 - Synced documentation (developer & user manuals, resolver module reference, command/class maps) and refreshed examples to highlight new link helpers.
 - Module checklist updated with resolver status; docs confirm `[query]` shortcodes reuse FilterEngine for selection.
+
+## 2025-10-22 – Evening Session
+
+- Refactored preset storage/validation to the new schema (`meta`, `settings`, `selection`, `templates`) and seeded bundled presets (`context-unified`, `context-jsonl`, `context-markdown-unified`, `context-markdown-slim`, `context-markdown-plain`, `context-text-plain`).
+- Rebuilt `ExportAgent` around template rendering: merged system/preset/CLI destination overrides, added file persistence (`--path`/`--save`), format overrides, nest-children ordering, and structured replacement helpers (payload flattening, heading/indent placeholders, plain payload rendering).
+- Introduced missing-field policies (`settings.options.missing_payload`) with configurable warning/skip behaviour; warnings now bubble through payload/meta responses.
+- Moved export defaults (`export.response`, `export.save`, `export.format`, `export.nest_children`) into the system brain with automatic seeding; removed legacy `response_exports` / `save_exports` config flags.
+- Updated developer/user documentation (`docs/dev/partials/modules/export.md`, `modules/preset.md`, `docs/user/sections/exports.md`, `docs/dev/commands.md`, `docs/README.md`) and refreshed command references to reflect the new workflow and presets.
+- **Next:** polish additional preset examples (timeline/history), consider configurable warning channels, and align Studio-facing docs with the new placeholders/options.

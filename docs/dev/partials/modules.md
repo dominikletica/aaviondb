@@ -156,13 +156,13 @@ return [
   - Inspect specific schema revisions via `@version`/`#commit`
   - Create, update, upsert, delete, and lint JSON Schema payloads using the shared validator
 - **`ExportAgent` (`export`)** – LLM-ready export bundles
-  - Handles `export <project|*> [entities] [--preset=slug] [--param.foo=value]`
-  - Builds flattened `context-unified-v2` payloads (meta/guide/policies/index/entities/stats)
-  - Delegates preset evaluation to `PresetAgent` + `FilterEngine` (entity/payload filters, transforms)
+  - Handles `export <project|*> [entities] [--preset=slug] [--param.foo=value] [--format=…] [--save=…] [--response=…] [--nest_children=…]`
+  - Renders preset templates (JSON, JSONL, Markdown, Text), applies transforms/filters, honours missing-field policies, surfaces warnings, and optionally persists files
+  - Delegates preset evaluation + filter DSL to `PresetAgent`/`PresetValidator` and `FilterEngine`
 - **`PresetAgent` (`preset`)** – Preset lifecycle management
   - CLI CRUD for presets (`preset list/show/create/update/delete/copy/import/export/vars`)
-  - Stores presets/layouts in the system brain; seeds default preset + layout on bootstrap
-  - Validates definitions (selection DSL, placeholders, policies) via `PresetValidator`
+  - Stores definitions (meta/settings/selection/templates/options) in the system brain; seeds JSON, JSONL, Markdown (rich/plain) and Text defaults
+  - Validates destination settings, variables, selection DSL, templates, and missing-field policies via `PresetValidator`
 - **`AuthAgent` (`auth`)** – API token lifecycle
   - Commands: auth grant/list/revoke/reset
   - Bootstrap key rotation

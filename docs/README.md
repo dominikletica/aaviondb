@@ -215,7 +215,7 @@ More commands will be documented as development progresses.
   - `admin_secret` — Master secret (must start with `_` and be ≥ 8 characters). When set, it bypasses API keys and `api serve`; keep it safe.
   - `default_brain` — Slug of the initial user brain (defaults to `default`).
   - `backups_path`, `exports_path`, `log_path` — Override storage locations (relative paths resolve from the repo root).
-  - `response_exports` / `save_exports` — Control whether export commands return JSON in the response and/or persist files to disk.
+  - `export.response`, `export.save`, `export.format`, `export.nest_children`, `export.path` — Stored in the system brain; adjust with `config set --system` to change export defaults.
   - `api_key_length` — Length of generated API keys (default 16).
   - `cache.active`, `cache.ttl` — Stored in the system brain; manage via `cache` commands or `set cache.* --system=1`.
   - `security.active`, `security.rate_limit`, `security.global_limit`, `security.block_duration`, `security.ddos_lockdown`, `security.failed_limit`, `security.failed_block` — Rate limiter defaults (tweak with `security` commands or `set security.* --system=1`).

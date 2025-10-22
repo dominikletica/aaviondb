@@ -2082,12 +2082,21 @@ final class BrainRepository
             $meta = isset($definition['meta']) && \is_array($definition['meta'])
                 ? $definition['meta']
                 : [];
+            $settings = isset($definition['settings']) && \is_array($definition['settings'])
+                ? $definition['settings']
+                : [];
+            $destination = isset($settings['destination']) && \is_array($settings['destination'])
+                ? $settings['destination']
+                : [];
 
             $result[] = [
                 'slug' => $slug,
+                'title' => $meta['title'] ?? null,
                 'description' => $meta['description'] ?? null,
                 'usage' => $meta['usage'] ?? null,
-                'layout' => $meta['layout'] ?? null,
+                'format' => $destination['format'] ?? null,
+                'read_only' => $meta['read_only'] ?? false,
+                'immutable' => $meta['immutable'] ?? false,
                 'created_at' => $meta['created_at'] ?? null,
                 'updated_at' => $meta['updated_at'] ?? null,
                 'tags' => $meta['tags'] ?? [],

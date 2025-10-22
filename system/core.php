@@ -434,8 +434,6 @@ final class AavionDB
                 'backups_path' => 'user/backups',
                 'exports_path' => 'user/exports',
                 'log_path' => 'system/storage/logs',
-                'response_exports' => true,
-                'save_exports' => true,
                 'api_key_length' => 16,
             ];
 

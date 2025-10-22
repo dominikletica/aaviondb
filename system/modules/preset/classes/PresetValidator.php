@@ -18,7 +18,12 @@ use function trim;
 
 final class PresetValidator
 {
-    private const DEFAULT_LAYOUT = 'context-unified-v2';
+    private const DEFAULT_FORMAT = 'json';
+
+    /**
+     * @var array<int, string>
+     */
+    private const SUPPORTED_FORMATS = ['json', 'jsonl', 'markdown', 'text'];
 
     /**
      * Validates and normalises a preset definition.
@@ -30,15 +35,9 @@ final class PresetValidator
     public function validate(array $definition): array
     {
         $definition['meta'] = $this->normaliseMeta($definition['meta'] ?? []);
+        $definition['settings'] = $this->normaliseSettings($definition['settings'] ?? []);
         $definition['selection'] = $this->normaliseSelection($definition['selection'] ?? []);
-        $definition['transform'] = $this->normaliseTransform($definition['transform'] ?? []);
-        $definition['policies'] = $this->normalisePolicies($definition['policies'] ?? []);
-        $definition['placeholders'] = $this->normalisePlaceholders($definition['placeholders'] ?? []);
-        $definition['params'] = $this->normaliseParams($definition['params'] ?? []);
-
-        if (!isset($definition['meta']['layout']) || $definition['meta']['layout'] === '') {
-            $definition['meta']['layout'] = self::DEFAULT_LAYOUT;
-        }
+        $definition['templates'] = $this->normaliseTemplates($definition['templates'] ?? []);
 
         return $definition;
     }
@@ -50,16 +49,9 @@ final class PresetValidator
      */
     private function normaliseMeta(array $meta): array
     {
-        $description = isset($meta['description']) ? trim((string) $meta['description']) : '';
-        $usage = isset($meta['usage']) ? trim((string) $meta['usage']) : '';
-        $layout = isset($meta['layout']) ? $this->normaliseSlug((string) $meta['layout']) : self::DEFAULT_LAYOUT;
-        if ($layout === '') {
-            $layout = self::DEFAULT_LAYOUT;
-        }
-
-        $meta['description'] = $description;
-        $meta['usage'] = $usage;
-        $meta['layout'] = $layout;
+        $meta['title'] = isset($meta['title']) ? trim((string) $meta['title']) : '';
+        $meta['description'] = isset($meta['description']) ? trim((string) $meta['description']) : '';
+        $meta['usage'] = isset($meta['usage']) ? trim((string) $meta['usage']) : '';
         $meta['read_only'] = isset($meta['read_only']) ? (bool) $meta['read_only'] : false;
 
         if (isset($meta['immutable'])) {
@@ -80,6 +72,22 @@ final class PresetValidator
         }
 
         return $meta;
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     *
+     * @return array<string, mixed>
+     */
+    private function normaliseSettings(array $settings): array
+    {
+        return [
+            'destination' => $this->normaliseDestination($settings['destination'] ?? []),
+            'variables' => $this->normaliseVariables($settings['variables'] ?? []),
+            'transform' => $this->normaliseTransform($settings['transform'] ?? []),
+            'policies' => $this->normalisePolicies($settings['policies'] ?? []),
+            'options' => $this->normaliseOptions($settings['options'] ?? []),
+        ];
     }
 
     /**
@@ -104,21 +112,48 @@ final class PresetValidator
         $entities = [];
         if (isset($selection['entities']) && is_array($selection['entities'])) {
             foreach (array_values($selection['entities']) as $index => $definition) {
-                $entities[] = $this->normaliseFilterDefinition($definition, $index, 'entities');
+                $entities[] = $this->normaliseFilterDefinition($definition, $index, 'selection.entities');
             }
         }
 
         $payloadFilters = [];
         if (isset($selection['payload_filters']) && is_array($selection['payload_filters'])) {
             foreach (array_values($selection['payload_filters']) as $index => $definition) {
-                $payloadFilters[] = $this->normaliseFilterDefinition($definition, $index, 'payload_filters');
+                $payloadFilters[] = $this->normaliseFilterDefinition($definition, $index, 'selection.payload_filters');
             }
+        }
+
+        $includeReferences = $selection['include_references'] ?? [];
+        if (!is_array($includeReferences)) {
+            $includeReferences = [];
+        }
+
+        $modes = [];
+        if (isset($includeReferences['modes']) && is_array($includeReferences['modes'])) {
+            $modes = array_values(array_filter(array_map(
+                static fn ($value): string => trim((string) $value),
+                $includeReferences['modes']
+            ), static fn (string $mode): bool => $mode !== ''));
+        }
+
+        $depth = isset($includeReferences['depth']) && is_numeric($includeReferences['depth'])
+            ? (int) $includeReferences['depth']
+            : 0;
+        if ($depth < 0) {
+            $depth = 0;
         }
 
         return [
             'projects' => $projects,
             'entities' => $entities,
             'payload_filters' => $payloadFilters,
+            'include_references' => [
+                'enabled' => isset($includeReferences['enabled'])
+                    ? (bool) $includeReferences['enabled']
+                    : ($depth > 0 || $modes !== []),
+                'depth' => $depth,
+                'modes' => $modes,
+            ],
         ];
     }
 
@@ -173,6 +208,78 @@ final class PresetValidator
     }
 
     /**
+     * @param array<string, mixed>|null $destination
+     *
+     * @return array<string, mixed>
+     */
+    private function normaliseDestination($destination): array
+    {
+        if (!is_array($destination)) {
+            $destination = [];
+        }
+
+        $path = isset($destination['path']) ? trim((string) $destination['path']) : '';
+        $format = isset($destination['format']) ? strtolower(trim((string) $destination['format'])) : self::DEFAULT_FORMAT;
+        if ($format === '') {
+            $format = self::DEFAULT_FORMAT;
+        }
+
+        if (!in_array($format, self::SUPPORTED_FORMATS, true)) {
+            throw new InvalidArgumentException(sprintf('Unsupported destination format "%s".', $destination['format'] ?? $format));
+        }
+
+        return [
+            'path' => $path === '' ? null : $path,
+            'response' => isset($destination['response']) ? (bool) $destination['response'] : true,
+            'save' => isset($destination['save']) ? (bool) $destination['save'] : true,
+            'format' => $format,
+            'nest_children' => isset($destination['nest_children']) ? (bool) $destination['nest_children'] : false,
+        ];
+    }
+
+    /**
+     * @param mixed $variables
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function normaliseVariables($variables): array
+    {
+        if (!is_array($variables)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($variables as $name => $config) {
+            if (!is_string($name) || trim($name) === '') {
+                throw new InvalidArgumentException('Variable names must be non-empty strings.');
+            }
+
+            if (!is_array($config)) {
+                $config = ['default' => $config];
+            }
+
+            $required = isset($config['required']) ? (bool) $config['required'] : false;
+            $default = $config['default'] ?? null;
+
+            if ($default !== null && !is_scalar($default) && !is_array($default)) {
+                throw new InvalidArgumentException(sprintf('Variable "%s" has an unsupported default value.', $name));
+            }
+
+            $description = isset($config['description']) ? trim((string) $config['description']) : null;
+            $type = isset($config['type']) ? $this->normaliseVariableType((string) $config['type']) : 'text';
+
+            $result[$name] = [
+                'required' => $required,
+                'default' => $default,
+                'description' => $description,
+                'type' => $type,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * @param array<string, mixed> $transform
      *
      * @return array<string, mixed>
@@ -198,7 +305,7 @@ final class PresetValidator
         $post = [];
         if (isset($transform['post']) && is_array($transform['post'])) {
             foreach (array_values($transform['post']) as $index => $definition) {
-                $post[] = $this->normaliseFilterDefinition($definition, $index, 'transform.post');
+                $post[] = $this->normaliseFilterDefinition($definition, $index, 'settings.transform.post');
             }
         }
 
@@ -223,7 +330,6 @@ final class PresetValidator
         $referencesDepth = isset($references['depth']) && is_numeric($references['depth'])
             ? (int) $references['depth']
             : 0;
-
         if ($referencesDepth < 0) {
             $referencesDepth = 0;
         }
@@ -263,89 +369,63 @@ final class PresetValidator
     }
 
     /**
-     * @param mixed $placeholders
+     * @param array<string, mixed> $options
      *
-     * @return array<int, string>
+     * @return array<string, mixed>
      */
-    private function normalisePlaceholders($placeholders): array
+    private function normaliseOptions(array $options): array
     {
-        if (!is_array($placeholders)) {
-            return [];
+        $missingPolicy = isset($options['missing_payload']) ? strtolower(trim((string) $options['missing_payload'])) : 'empty';
+        if ($missingPolicy === '') {
+            $missingPolicy = 'empty';
         }
 
-        $result = [];
-        foreach ($placeholders as $placeholder) {
-            if (!is_string($placeholder)) {
-                continue;
-            }
-
-            $key = trim($placeholder);
-            if ($key === '') {
-                continue;
-            }
-
-            $result[$key] = $key;
+        if (!in_array($missingPolicy, ['empty', 'skip'], true)) {
+            throw new InvalidArgumentException(sprintf('Unsupported options.missing_payload value "%s".', $options['missing_payload'] ?? $missingPolicy));
         }
 
-        return array_values($result);
+        return [
+            'missing_payload' => $missingPolicy,
+        ];
     }
 
     /**
-     * @param mixed $params
+     * @param array<string, mixed> $templates
      *
-     * @return array<string, array<string, mixed>>
+     * @return array<string, string>
      */
-    private function normaliseParams($params): array
+    private function normaliseTemplates(array $templates): array
     {
-        if (!is_array($params)) {
-            return [];
+        $root = $this->normaliseTemplateString($templates['root'] ?? null, 'root', true);
+        $project = $this->normaliseTemplateString($templates['project'] ?? '', 'project', false);
+        $entity = $this->normaliseTemplateString($templates['entity'] ?? null, 'entity', true);
+
+        return [
+            'root' => $root,
+            'project' => $project,
+            'entity' => $entity,
+        ];
+    }
+
+    private function normaliseTemplateString($value, string $label, bool $required): string
+    {
+        if ($value === null) {
+            if ($required) {
+                throw new InvalidArgumentException(sprintf('Template "%s" must be provided.', $label));
+            }
+
+            return '';
         }
 
-        $result = [];
-
-        $allowedTypes = ['text', 'int', 'integer', 'number', 'float', 'bool', 'boolean', 'array', 'object', 'comma_list', 'csv', 'json'];
-
-        foreach ($params as $name => $config) {
-            if (!is_string($name) || trim($name) === '') {
-                throw new InvalidArgumentException('Parameter names must be non-empty strings.');
-            }
-
-            if (!is_array($config)) {
-                $config = ['default' => $config];
-            }
-
-            $required = isset($config['required']) ? (bool) $config['required'] : false;
-            $default = $config['default'] ?? null;
-
-            if ($default !== null && !is_scalar($default) && !is_array($default)) {
-                throw new InvalidArgumentException(sprintf('Parameter "%s" has an unsupported default value.', $name));
-            }
-
-            $description = isset($config['description']) ? trim((string) $config['description']) : null;
-
-            $type = isset($config['type']) ? strtolower(trim((string) $config['type'])) : 'text';
-            if ($type === 'integer') {
-                $type = 'int';
-            } elseif ($type === 'boolean') {
-                $type = 'bool';
-            } elseif ($type === 'csv') {
-                $type = 'comma_list';
-            }
-
-            if (!in_array($type, $allowedTypes, true)) {
-                $invalid = $config['type'] ?? $type;
-                throw new InvalidArgumentException(sprintf('Parameter "%s" has unsupported type "%s".', $name, $invalid));
-            }
-
-            $result[$name] = [
-                'required' => $required,
-                'default' => $default,
-                'description' => $description,
-                'type' => $type,
-            ];
+        if (!is_string($value)) {
+            throw new InvalidArgumentException(sprintf('Template "%s" must be a string.', $label));
         }
 
-        return $result;
+        if ($required && trim($value) === '') {
+            throw new InvalidArgumentException(sprintf('Template "%s" must not be empty.', $label));
+        }
+
+        return $value;
     }
 
     private function normaliseSlug(string $value): string
@@ -354,5 +434,39 @@ final class PresetValidator
         $value = (string) \preg_replace('/[^a-z0-9\-_.]/', '-', $value);
 
         return trim($value, '-_.');
+    }
+
+    private function normaliseVariableType(string $type): string
+    {
+        $normalized = strtolower(trim($type));
+        if ($normalized === '') {
+            return 'text';
+        }
+
+        if (in_array($normalized, ['integer', 'int'], true)) {
+            return 'int';
+        }
+
+        if (in_array($normalized, ['boolean', 'bool'], true)) {
+            return 'bool';
+        }
+
+        if ($normalized === 'csv') {
+            return 'comma_list';
+        }
+
+        if (in_array($normalized, ['number', 'float', 'double'], true)) {
+            return 'number';
+        }
+
+        if ($normalized === 'string') {
+            return 'text';
+        }
+
+        if (in_array($normalized, ['text', 'array', 'object', 'json', 'comma_list'], true)) {
+            return $normalized;
+        }
+
+        throw new InvalidArgumentException(sprintf('Unsupported variable type "%s".', $type));
     }
 }

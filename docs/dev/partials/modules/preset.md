@@ -1,101 +1,129 @@
 # PresetAgent Module
 
-> **Status:** Implemented – manages export presets and layouts in the system brain.  
-> **Last updated:** 2025-10-21
+> **Status:** Implemented – manages export presets in the system brain (no separate layout store).  
+> **Last updated:** 2025-10-22
 
 ## Responsibilities
-- Provide CLI/REST CRUD for export presets (`preset list/show/create/update/delete/copy/import/export`).
-- Persist presets and layout templates in the system brain namespace (`BrainRepository::savePreset()`, `saveExportLayout()`).
-- Ensure the default preset (`default`) and layout (`context-unified-v2`) exist during bootstrap.
-- Validate preset definitions (selection DSL, transforms, policies, placeholders) via `PresetValidator` before persisting.
+- Provide CLI/REST CRUD for presets (`preset list/show/create/update/delete/copy/import/export/vars`).
+- Persist preset definitions (meta, settings, selection, templates) in `export.presets[slug]` via `BrainRepository`.
+- Seed the bundled presets during bootstrap: `context-unified` (default), `context-jsonl`, `context-markdown-unified`, `context-markdown-slim`, `context-markdown-plain`, `context-text-plain` – all marked `read_only` + `immutable`.
+- Validate payloads with `PresetValidator` (destination settings, variables, selection/filter DSL, templates) before writing.
+- Surface placeholder metadata for Studio/UI tooling through `preset vars` (type, default, required, description).
 
 ## Call Flow
-1. `module.php` instantiates `PresetAgent` during system module bootstrap.
-2. `registerParser()` maps `preset ...` subcommands to dedicated handlers, capturing payload JSON (`--payload` or request body) and file arguments (`--file=` / path tokens).
-3. `register()` wires command handlers:
-   - `preset list` – enumerates presets with descriptions, layout id, timestamps.
-   - `preset show <slug>` – dumps the stored definition (including meta/policies/selection).
-   - `preset create|update <slug>` – accepts JSON payloads, validates via `PresetValidator::validate()`, and writes to the system brain.
-   - `preset delete <slug>` – removes mutable presets; default preset is immutable.
-   - `preset copy <source> <target> [--force]` – clones definitions (scrubs read-only flags).
-- `preset import <slug> <path> [--force]` / `preset export <slug> [--file=path]` – bridge to disk files when needed.
-- `preset vars <slug>` – expose placeholders, types, defaults, and required flags for Studio/UI auto forms.
-4. `ensureDefaults()` runs on initialisation to seed the default preset + layout if missing.
+1. `module.php` instantiates `PresetAgent` when system modules are loaded.
+2. `registerParser()` maps `preset ...` tokens to proper handlers and captures inline payloads (`--payload`, request body) or file arguments (`--file=path`).
+3. `ensureDefaults()` seeds the bundled presets if they are missing (flags them as `read_only`/`immutable`).
+4. Command handlers (`preset list/show/...`) work against the system brain namespace through `BrainRepository` helpers.
 
 ## Storage Schema
-- System brain `export.presets[slug]` – JSON definition with `meta`, `selection`, `transform`, `policies`, `placeholders`, `params`.
-- System brain `export.layouts[id]` – layout template JSON (currently `context-unified-v2`).
-- Metadata for each preset: `meta.slug`, `meta.description`, `meta.usage`, `meta.layout`, `meta.read_only`, `meta.created_at`, `meta.updated_at`.
+Each preset lives under `export.presets[slug]` with the following shape:
+
+```jsonc
+{
+  "meta": {
+    "title": "Context Unified",
+    "description": "Description shown to users",
+    "usage": "LLM usage hint",
+    "tags": ["default"],
+    "read_only": true,
+    "immutable": true,
+    "created_at": "...",
+    "updated_at": "..."
+  },
+  "settings": {
+    "destination": {
+      "path": null,
+      "response": true,
+      "save": true,
+      "format": "json",
+      "nest_children": false
+    },
+    "variables": {
+      "foo": {"type": "text", "required": false, "default": null, "description": "..."}
+    },
+    "transform": {"whitelist": [], "blacklist": [], "post": []},
+    "policies": {"references": {"include": true, "depth": 1}, "cache": {"ttl": 3600, "invalidate_on": ["hash", "commit"]}},
+    "options": {"missing_payload": "empty"}
+  },
+  "selection": {
+    "projects": ["${project}"],
+    "entities": [{"type": "payload_contains", "config": {"field": "payload.flags", "value": "${param.flag}"}}],
+    "payload_filters": [],
+    "include_references": {"enabled": true, "depth": 1, "modes": ["primary"]}
+  },
+  "templates": {
+    "root": "{\\n  \"meta\": ${meta}, ... }",
+    "project": "{\\n  \"slug\": ${project.slug}, ... }",
+    "entity": "{\\n  \"uid\": ${entity.uid}, ... }"
+  }
+}
+```
+
+There is no longer a separate `export.layouts` bucket; templates live inside the preset.
 
 ## Validation Highlights (`PresetValidator`)
-- Normalises meta fields (description/usage/layout/tags/read_only).
-- Ensures project selectors, entity filter DSL, payload filters, and transforms are arrays of well-formed objects (`type` + `config`).
-- Coerces policy defaults (`references.include/depth`, `cache.ttl`, `cache.invalidate_on`).
-- Normalises placeholders and params (`required`, `default`, `description`).
-- Supports explicit parameter types (`text`, `int`, `number`, `float`, `bool`, `array`, `object`, `comma_list`) which are surfaced via `preset vars`.
-- Throws `InvalidArgumentException` with deterministic messages on malformed input (surfaced by CLI/REST).
+- Normalises meta (`title`, `description`, `usage`, `tags`, `read_only`, `immutable`).
+- Validates `settings.destination` (path/response/save/format/nest_children), `settings.variables` (type/default/required/description), `settings.transform` and `settings.policies`.
+- Ensures `selection.projects` placeholders (`${project}`, `${param.foo}`, literal slugs), entity/payload filter DSL (`type` + `config`), and reference options are well formed.
+- Requires `templates.root` and `templates.entity` to be non-empty strings; `templates.project` may be empty when the root template handles everything.
+- Normalises `settings.options.missing_payload` (`empty` → emit blank/null, `skip` → drop entity and emit warning).
+- Normalises parameter types (`text`, `int`, `number`, `float`, `bool`, `array`, `object`, `comma_list`, `json`).
+- Throws `InvalidArgumentException` with deterministic messages when definitions are malformed.
 
 ## Example Commands
 ```bash
 # List presets
 php cli.php "preset list"
 
-# Create a preset from JSON payload
-php cli.php "preset create focus-scene" \
-  --payload='{
-    "meta": {"description": "Scene focus", "layout": "context-unified-v2"},
-    "selection": {
-      "projects": ["${project}"],
-      "entities": [
-        {"type": "payload_contains", "config": {"field": "payload.scene", "value": "${param.scene}"}}
-      ]
-    },
-    "transform": {"whitelist": ["summary", "notes"]},
-    "policies": {"references": {"include": true, "depth": 1}},
-    "params": {"scene": {"required": true}}
-  }'
+# Create a preset with custom filters and templates
+php cli.php "preset create focus-scene" --payload='{
+  "meta": {"title": "Scene Focus", "description": "Export scenes by flag", "usage": "Hand to the LLM as context"},
+  "settings": {
+    "destination": {"format": "json"},
+    "variables": {"scene": {"type": "text", "required": true}},
+    "transform": {"whitelist": ["summary", "notes"]}
+  },
+  "selection": {
+    "projects": ["${project}"],
+    "entities": [{"type": "payload_contains", "config": {"field": "payload.scene", "value": "${param.scene}"}}]
+  },
+  "templates": {
+    "root": "{\\n  \"meta\": ${meta},\\n  \"projects\": ${projects},\\n  \"entities\": ${entities}\n}",
+    "project": "{\\n  \"slug\": ${project.slug},\\n  \"entities\": ${entities}\n}",
+    "entity": "{\\n  \"uid\": ${entity.uid},\\n  \"payload\": ${entity.payload}\n}"
+  }
+}'
 
-# Update using file import
+# Export / import
+php cli.php "preset export focus-scene --file=presets/focus-scene.json"
 php cli.php "preset import focus-scene presets/focus-scene.json" --force
 
-# Export to disk
-php cli.php "preset export focus-scene --file=presets/focus-scene.json"
+# Clone bundled preset to customise
+php cli.php "preset copy context-unified my-unified"
 
-# Copy and tweak
-php cli.php "preset copy focus-scene spotlight"
-
-# Inspect variables/placeholders
+# Inspect placeholders for Studio forms
 php cli.php "preset vars focus-scene"
-
-# Example vars response (excerpt)
-{
-  "data": {
-    "placeholders": ["project", "param.scene"],
-    "placeholder_details": [
-      {"placeholder": "project", "type": "text", "source": "project"},
-      {"placeholder": "param.scene", "type": "text", "source": "param", "name": "scene", "required": true}
-    ],
-    "params": {
-      "scene": {"required": true, "type": "text", "default": null, "description": null}
-    }
-  }
-}
 ```
 
-## Default Preset & Layout
-- The seeded `default` preset is part of the bootstrap process and is marked `read_only`/`immutable`. Any write attempt (`preset update/delete default`) returns a deterministic error.  
-- To customise the default behaviour, copy it first (`preset copy default my-slice`) or adjust the PHP source:
-  - Default preset definition lives in `system/modules/preset/classes/PresetAgent::defaultPresetDefinition()`.
-  - Default layout template lives in `PresetAgent::defaultLayoutDefinition()`.
-- Whenever these helpers change, run `preset export default` to review the generated JSON and update documentation/examples.
+- `context-unified` (default for `export`) – JSON bundle with meta/guide/policies/index/projects/entities.
+- `context-jsonl` – Emits one JSON object per line (`JSONL`) plus a header line with metadata.
+- `context-markdown-unified` – Rich Markdown with sections per project/entity and fenced JSON payloads.
+- `context-markdown-slim` – Lightweight Markdown bullet list of entities.
+- `context-markdown-plain` – Markdown headings rendered without inline JSON (uses `${entity.heading_prefix}`, `${entity.payload_plain}`).
+- `context-text-plain` – Plain text key/value breakdown tailored for prompt injection.
+
+All bundled presets are stored in code (`PresetAgent::buildContext*Preset()`) and written to the system brain on startup. They are marked `read_only` and `immutable`; copy them before tweaking (`preset copy context-unified my-export`).
+If you attempt to update a read-only preset, the agent automatically saves the changes under `<slug>-vN` (starting with `-v2`) so the protected default remains untouched.
 
 ## Interaction with ExportAgent
-- ExportAgent queries presets through `BrainRepository::getPreset()`; presets flagged as `read_only`/`immutable` guard system defaults.
-- Layout ids referenced by presets (`meta.layout`) are fetched via `getExportLayout()` and rendered by `renderLayout()`.
-- FilterEngine receives placeholder maps derived from preset parameters (`${param.*}` / `${var.*}`) and the current project slug (`${project}`).
-- ResolverEngine reuses the same parameter bag, so preset variables automatically flow into `[ref]` / `[query]` expressions during exports.
+- `ExportAgent` loads presets via `BrainRepository::getPreset()` and reads `settings.destination`, `settings.variables`, `settings.options`, and `selection` filters.
+- Destination defaults (`export.response`, `export.save`, `export.format`, `export.nest_children`) are stored in the system brain (`config set --system`). CLI overrides (`--format`, `--path`, `--save`, `--response`) merge on top.
+- FilterEngine receives placeholder maps derived from preset variables and `${project}` to evaluate entity selectors/payload filters.
+- ResolverEngine reuses the same parameter bag, so `${param.*}` placeholders are available inside `[ref]` / `[query]` shortcodes while rendering.
+- Templates are rendered directly by `ExportAgent` (no separate layout lookup) and the final content is emitted as JSON/JSONL/Markdown/Text depending on the destination format. Payload placeholders missing from the source can be handled via `settings.options.missing_payload` (`empty` vs `skip`), with warnings surfaced in the export response.
 
 ## Error Handling
 - Missing preset → `Preset "<slug>" not found.`
-- Attempting to modify/delete the default preset → `Preset "default" is read-only.`
-- Validation errors bubble up with the first failing field (e.g. `Preset parameter "timeline" is required.`).
+- Attempting to modify/delete a protected preset → `Preset "<slug>" is read-only.`
+- Validation failure → descriptive error (e.g. `Preset parameter "scene" is required.`).

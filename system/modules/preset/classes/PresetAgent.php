@@ -13,6 +13,7 @@ use InvalidArgumentException;
 use JsonException;
 use Psr\Log\LoggerInterface;
 use Throwable;
+use function array_keys;
 use function array_map;
 use function array_shift;
 use function array_unshift;
@@ -33,6 +34,8 @@ use function json_decode;
 use function json_encode;
 use function mkdir;
 use function preg_match;
+use function preg_match_all;
+use function sort;
 use function sprintf;
 use function str_contains;
 use function str_starts_with;
@@ -48,9 +51,9 @@ use const JSON_UNESCAPED_UNICODE;
 
 final class PresetAgent
 {
-    private const DEFAULT_PRESET = 'default';
+    private const DEFAULT_PRESET = 'context-unified';
 
-    private const DEFAULT_LAYOUT = 'context-unified-v2';
+    private const PLACEHOLDER_PATTERN = '/\$\{([a-z0-9_.:\\-]+)\}/i';
 
     private ModuleContext $context;
 
@@ -293,7 +296,37 @@ final class PresetAgent
         }
 
         if ($this->isPresetProtected($current)) {
-            return CommandResponse::error('preset update', sprintf('Preset "%s" is read-only.', $slug));
+            $cloneSlug = $this->generateCloneSlug($slug);
+
+            try {
+                $definition = $this->resolveDefinition($parameters);
+                $definition = $this->validator->validate($definition);
+            } catch (InvalidArgumentException $exception) {
+                return CommandResponse::error('preset update', $exception->getMessage());
+            } catch (JsonException $exception) {
+                return CommandResponse::error('preset update', $exception->getMessage());
+            }
+
+            try {
+                $this->brains->savePreset($cloneSlug, $definition, false);
+            } catch (Throwable $exception) {
+                $this->logger->error('Failed to create clone preset while updating read-only preset.', [
+                    'source' => $slug,
+                    'clone' => $cloneSlug,
+                    'exception' => [
+                        'message' => $exception->getMessage(),
+                        'class' => $exception::class,
+                    ],
+                ]);
+
+                return CommandResponse::error('preset update', $exception->getMessage());
+            }
+
+            return CommandResponse::success('preset update', [
+                'preset' => $this->brains->getPreset($cloneSlug),
+                'clone' => $cloneSlug,
+                'note' => sprintf('Preset "%s" is read-only. Changes were saved as "%s" instead.', $slug, $cloneSlug),
+            ], sprintf('Preset "%s" is read-only. Created clone "%s" instead.', $slug, $cloneSlug));
         }
 
         try {
@@ -330,6 +363,19 @@ final class PresetAgent
         return CommandResponse::success('preset update', [
             'preset' => $this->brains->getPreset($slug),
         ], sprintf('Preset "%s" updated.', $slug));
+    }
+
+    private function generateCloneSlug(string $baseSlug): string
+    {
+        $suffix = 2;
+        $candidate = $baseSlug . '-v' . $suffix;
+
+        while ($this->brains->presetExists($candidate)) {
+            $suffix++;
+            $candidate = $baseSlug . '-v' . $suffix;
+        }
+
+        return $candidate;
     }
 
     private function presetDeleteCommand(array $parameters): CommandResponse
@@ -509,114 +555,96 @@ final class PresetAgent
         }
 
         $meta = isset($preset['meta']) && is_array($preset['meta']) ? $preset['meta'] : [];
-
-        $placeholders = isset($preset['placeholders']) && is_array($preset['placeholders'])
-            ? array_values(array_filter(array_map(
-                static fn ($value): string => trim((string) $value),
-                $preset['placeholders']
-            ), static fn (string $value): bool => $value !== ''))
-            : [];
-
-        $placeholders[] = 'project';
+        $options = isset($preset['settings']['options']) && is_array($preset['settings']['options'])
+            ? $preset['settings']['options']
+            : ['missing_payload' => 'empty'];
+        $settings = isset($preset['settings']) && is_array($preset['settings']) ? $preset['settings'] : [];
+        $variables = isset($settings['variables']) && is_array($settings['variables']) ? $settings['variables'] : [];
+        $templates = isset($preset['templates']) && is_array($preset['templates']) ? $preset['templates'] : [];
 
         $placeholderSet = [];
-        foreach ($placeholders as $placeholder) {
+        foreach ($this->collectTemplatePlaceholders($templates) as $placeholder) {
             $placeholderSet[$placeholder] = true;
         }
 
-        foreach (array_keys($params) as $key) {
-            $placeholderSet['param.' . $key] = true;
+        foreach (array_keys($variables) as $name) {
+            $placeholderSet['param.' . $name] = true;
         }
 
-        $placeholders = array_values(array_unique(array_keys($placeholderSet)));
-
-        $params = [];
-        if (isset($preset['params']) && is_array($preset['params'])) {
-            foreach ($preset['params'] as $name => $config) {
-                if (!is_string($name) || trim($name) === '') {
-                    continue;
-                }
-
-                if (!is_array($config)) {
-                    $config = ['default' => $config];
-                }
-
-                $params[$name] = [
-                    'required' => isset($config['required']) ? (bool) $config['required'] : false,
-                    'default' => $config['default'] ?? null,
-                    'description' => isset($config['description']) ? (string) $config['description'] : null,
-                    'type' => isset($config['type']) ? (string) $config['type'] : 'text',
-                ];
-            }
-        }
+        $placeholders = array_keys($placeholderSet);
+        sort($placeholders, SORT_STRING);
 
         $placeholderDetails = [];
         foreach ($placeholders as $placeholder) {
-            $detail = ['placeholder' => $placeholder, 'type' => 'text'];
+            $detail = ['placeholder' => $placeholder, 'source' => 'template'];
 
-            if ($placeholder === 'project') {
-                $detail['source'] = 'project';
-            } elseif (str_starts_with($placeholder, 'param.')) {
+            if (str_starts_with($placeholder, 'param.')) {
                 $name = substr($placeholder, 6);
+                $config = $variables[$name] ?? [];
                 $detail['source'] = 'param';
                 $detail['name'] = $name;
-                $detail['type'] = $params[$name]['type'] ?? 'text';
-                $detail['required'] = $params[$name]['required'] ?? false;
-                if (isset($params[$name]['default'])) {
-                    $detail['default'] = $params[$name]['default'];
+                $detail['type'] = $config['type'] ?? 'text';
+                $detail['required'] = $config['required'] ?? false;
+                if (array_key_exists('default', $config)) {
+                    $detail['default'] = $config['default'];
                 }
+                if (($config['description'] ?? null) !== null) {
+                    $detail['description'] = $config['description'];
+                }
+            } elseif (str_starts_with($placeholder, 'project.')) {
+                $detail['source'] = 'project';
+            } elseif (str_starts_with($placeholder, 'entity.')) {
+                $detail['source'] = 'entity';
+            } elseif (str_starts_with($placeholder, 'meta.')) {
+                $detail['source'] = 'meta';
             } else {
-                $detail['source'] = 'custom';
+                $detail['source'] = 'context';
             }
 
             $placeholderDetails[] = $detail;
         }
 
         $notes = [
-            'project' => 'Resolved from the project target supplied to `export` (e.g. `export myproject`).',
-            'param.*' => 'Pass values via `--param.<name>=value` (alias `--var.<name>=value`) or JSON payloads under `params`.',
-            'types' => 'Parameter types may be: text, int, number, float, bool, array, object, comma_list (CSV).',
+            'param.*' => 'Pass variables via `--param.<name>=value` (alias `--var.<name>=value`) or provide a JSON payload with a `params` object.',
+            'project' => 'Resolved from the project slug supplied to `export` (e.g. `export myproject`).',
+            'format' => 'Templates render differently depending on the destination format (json, jsonl, markdown, text).',
         ];
 
         return CommandResponse::success('preset vars', [
             'slug' => $slug,
-            'layout' => $meta['layout'] ?? self::DEFAULT_LAYOUT,
+            'format' => $settings['destination']['format'] ?? null,
+            'variables' => $variables,
             'placeholders' => $placeholders,
             'placeholder_details' => $placeholderDetails,
-            'params' => $params,
+            'meta' => $meta,
+            'options' => $options,
             'notes' => $notes,
         ], sprintf('Preset "%s" exposes %d placeholder(s).', $slug, count($placeholders)));
     }
 
     private function ensureDefaults(): void
     {
-        try {
-            if (!$this->brains->presetExists(self::DEFAULT_PRESET)) {
-                $definition = $this->validator->validate($this->defaultPresetDefinition());
-                $definition['meta']['read_only'] = true;
-                $definition['meta']['immutable'] = true;
-                $this->brains->savePreset(self::DEFAULT_PRESET, $definition, false);
-            }
-        } catch (Throwable $exception) {
-            $this->logger->error('Failed to ensure default preset.', [
-                'exception' => [
-                    'message' => $exception->getMessage(),
-                    'class' => $exception::class,
-                ],
-            ]);
-        }
+        foreach ($this->defaultPresetDefinitions() as $slug => $definition) {
+            try {
+                if ($this->brains->presetExists($slug)) {
+                    continue;
+                }
 
-        try {
-            if ($this->brains->getExportLayout(self::DEFAULT_LAYOUT) === null) {
-                $this->brains->saveExportLayout(self::DEFAULT_LAYOUT, $this->defaultLayoutDefinition(), false);
+                $validated = $this->validator->validate($definition);
+                $meta = $validated['meta'] ?? [];
+                $meta['read_only'] = true;
+                $meta['immutable'] = true;
+                $validated['meta'] = $meta;
+                $this->brains->savePreset($slug, $validated, false);
+            } catch (Throwable $exception) {
+                $this->logger->error('Failed to seed default preset.', [
+                    'preset' => $slug,
+                    'exception' => [
+                        'message' => $exception->getMessage(),
+                        'class' => $exception::class,
+                    ],
+                ]);
             }
-        } catch (Throwable $exception) {
-            $this->logger->error('Failed to ensure default export layout.', [
-                'exception' => [
-                    'message' => $exception->getMessage(),
-                    'class' => $exception::class,
-                ],
-            ]);
         }
     }
 
@@ -780,21 +808,234 @@ final class PresetAgent
         return $directory;
     }
 
-    private function defaultPresetDefinition(): array
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function defaultPresetDefinitions(): array
     {
         return [
-            'meta' => [
-                'description' => 'Default context export preset.',
-                'usage' => 'Exports the current project with canonical entities for LLM ingestion.',
-                'layout' => self::DEFAULT_LAYOUT,
-                'read_only' => true,
-                'immutable' => true,
+            self::DEFAULT_PRESET => $this->buildContextUnifiedPreset(),
+            'context-jsonl' => $this->buildContextJsonlPreset(),
+            'context-markdown-unified' => $this->buildContextMarkdownUnifiedPreset(),
+            'context-markdown-slim' => $this->buildContextMarkdownSlimPreset(),
+            'context-markdown-plain' => $this->buildContextMarkdownPlainPreset(),
+            'context-text-plain' => $this->buildContextTextPlainPreset(),
+        ];
+    }
+
+    private function buildContextUnifiedPreset(): array
+    {
+        return [
+            'meta' => $this->baseMeta(
+                'Context Unified',
+                'Deterministic JSON bundle for rich LLM ingestion.',
+                'Use when you need a full project slice with metadata, index, and payloads in a single JSON object.',
+                ['default', 'json']
+            ),
+            'settings' => $this->baseSettings('json'),
+            'selection' => $this->baseSelection(true, 1),
+            'templates' => [
+                'root' => '{
+  "meta": ${meta},
+  "guide": ${guide},
+  "policies": ${policies},
+  "index": ${index},
+  "projects": ${projects},
+  "stats": ${stats}
+}',
+                'project' => '{
+  "slug": ${project.slug},
+  "title": ${project.title},
+  "description": ${project.description},
+  "status": ${project.status},
+  "created_at": ${project.created_at},
+  "updated_at": ${project.updated_at},
+  "entity_count": ${project.entity_count},
+  "version_count": ${project.version_count},
+  "entities": ${entities}
+}',
+                'entity' => '{
+  "uid": ${entity.uid},
+  "project": ${entity.project},
+  "slug": ${entity.slug},
+  "version": ${entity.version},
+  "commit": ${entity.commit},
+  "active": ${entity.active},
+  "parent": ${entity.parent},
+  "children": ${entity.children},
+  "refs": ${entity.refs},
+  "payload": ${entity.payload}
+}',
             ],
-            'selection' => [
-                'projects' => ['${project}'],
-                'entities' => [],
-                'payload_filters' => [],
+        ];
+    }
+
+    private function buildContextJsonlPreset(): array
+    {
+        return [
+            'meta' => $this->baseMeta(
+                'Context JSON Lines',
+                'Streaming-friendly JSONL export with one entity per line.',
+                'Ideal for pipelines that consume entities sequentially; each line is a standalone JSON document.',
+                ['example', 'jsonl']
+            ),
+            'settings' => $this->baseSettings('jsonl'),
+            'selection' => $this->baseSelection(true, 1),
+            'templates' => [
+                'root' => '${meta}
+${entities}',
+                'project' => '',
+                'entity' => '${entity}',
             ],
+        ];
+    }
+
+    private function buildContextMarkdownUnifiedPreset(): array
+    {
+        return [
+            'meta' => $this->baseMeta(
+                'Context Markdown (Unified)',
+                'Human-readable export with rich metadata and fenced JSON payloads.',
+                'Great for analyst briefings or manual review when full context is required.',
+                ['example', 'markdown', 'rich']
+            ),
+            'settings' => $this->baseSettings('markdown'),
+            'selection' => $this->baseSelection(true, 1),
+            'templates' => [
+                'root' => '# ${meta.title}
+
+${projects}
+',
+                'project' => '## ${project.title}
+
+${project.description}
+
+${entities}
+',
+                'entity' => '### ${entity.display_name}
+
+- UID: ${entity.uid}
+- Version: ${entity.version}
+- Active: ${entity.active}
+
+```json
+${entity.payload_pretty}
+```
+',
+            ],
+        ];
+    }
+
+    private function buildContextMarkdownSlimPreset(): array
+    {
+        return [
+            'meta' => $this->baseMeta(
+                'Context Markdown (Slim)',
+                'Concise bullet-point export highlighting entity names for quick scans.',
+                'Use when you only need an overview of entities without full payload detail.',
+                ['example', 'markdown', 'slim']
+            ),
+            'settings' => $this->baseSettings('markdown'),
+            'selection' => $this->baseSelection(false, 0),
+            'templates' => [
+                'root' => '# ${meta.title}
+
+${projects}
+',
+                'project' => '## ${project.title}
+
+${entities}
+',
+                'entity' => '- ${entity.display_name}
+',
+            ],
+        ];
+    }
+
+    private function buildContextMarkdownPlainPreset(): array
+    {
+        return [
+            'meta' => $this->baseMeta(
+                'Context Markdown (Plain)',
+                'Human-readable export without embedded JSON blocks.',
+                'Use when you want a narrative context bundle with markdown headings only.',
+                ['example', 'markdown', 'plain']
+            ),
+            'settings' => $this->baseSettings('markdown'),
+            'selection' => $this->baseSelection(true, 1),
+            'templates' => [
+                'root' => <<<'MD'
+# ${meta.title}
+
+${projects}
+MD,
+                'project' => <<<'MD'
+## ${project.title}
+
+${entities}
+MD,
+                'entity' => <<<'MD'
+${entity.heading_prefix} ${entity.display_name}
+
+${entity.payload_plain}
+MD,
+            ],
+        ];
+    }
+
+    private function buildContextTextPlainPreset(): array
+    {
+        return [
+            'meta' => $this->baseMeta(
+                'Context Text (Plain)',
+                'Plain text export with simple key/value breakdowns.',
+                'Use for lightweight prompts or systems that cannot parse Markdown.',
+                ['example', 'text', 'plain']
+            ),
+            'settings' => $this->baseSettings('text'),
+            'selection' => $this->baseSelection(true, 1),
+            'templates' => [
+                'root' => <<<'TEXT'
+Export: ${meta.title}
+
+${projects}
+TEXT,
+                'project' => <<<'TEXT'
+Project: ${project.title}
+${entities}
+TEXT,
+                'entity' => <<<'TEXT'
+${entity.indent}- ${entity.display_name}: ${entity.payload_plain}
+TEXT,
+            ],
+        ];
+    }
+
+    private function baseMeta(string $title, string $description, string $usage, array $tags = []): array
+    {
+        return [
+            'title' => $title,
+            'description' => $description,
+            'usage' => $usage,
+            'tags' => $tags,
+        ];
+    }
+
+    private function baseSettings(string $format, bool $nestChildren = false, array $variables = [], bool $includeReferences = true, int $referenceDepth = 1, string $missingPayloadPolicy = 'empty'): array
+    {
+        if ($referenceDepth < 0) {
+            $referenceDepth = 0;
+        }
+
+        return [
+            'destination' => [
+                'path' => null,
+                'response' => true,
+                'save' => true,
+                'format' => $format,
+                'nest_children' => $nestChildren,
+            ],
+            'variables' => $variables,
             'transform' => [
                 'whitelist' => [],
                 'blacklist' => [],
@@ -802,73 +1043,66 @@ final class PresetAgent
             ],
             'policies' => [
                 'references' => [
-                    'include' => true,
-                    'depth' => 1,
+                    'include' => $includeReferences,
+                    'depth' => $includeReferences ? $referenceDepth : 0,
                 ],
                 'cache' => [
                     'ttl' => 3600,
                     'invalidate_on' => ['hash', 'commit'],
                 ],
             ],
-            'placeholders' => ['project'],
-            'params' => [],
+            'options' => [
+                'missing_payload' => $missingPayloadPolicy,
+            ],
         ];
     }
 
-    private function defaultLayoutDefinition(): array
+    private function baseSelection(bool $includeReferences, int $depth): array
     {
+        if ($depth < 0) {
+            $depth = 0;
+        }
+
         return [
-            'format' => 'json',
-            'meta' => [
-                'description' => 'Unified JSON export optimised for deterministic LLM context ingestion.',
-            ],
-            'template' => [
-                'meta' => [
-                    'layout' => self::DEFAULT_LAYOUT,
-                    'preset' => '${preset}',
-                    'generated_at' => '${generated_at}',
-                    'scope' => '${scope}',
-                    'description' => '${description}',
-                    'action' => '${action}',
-                ],
-                'guide' => [
-                    'usage' => '${usage}',
-                    'notes' => [
-                        'Each entity is self-contained and references others via "@project.slug" or "@project.slug.field".',
-                        'Use the "refs" array to explore relationships without navigating nested trees.',
-                        'Active versions represent canon; include inactive versions intentionally for historical slices.',
-                        'Field references such as "@project.slug.field.path" resolve nested payload values deterministically.',
-                    ],
-                ],
-                'policies' => [
-                    'load' => 'Treat "active_version" as canonical unless selectors override.',
-                    'cache' => [
-                        'ttl' => '${policies.cache.ttl}',
-                        'invalidate_on' => '${policies.cache.invalidate_on}',
-                    ],
-                    'references' => [
-                        'include' => '${policies.references.include}',
-                        'depth' => '${policies.references.depth}',
-                    ],
-                ],
-                'index' => '${index}',
-                'entities' => '${entities}',
-                'stats' => '${stats}',
-            ],
-            'entity_template' => [
-                'uid' => '${entity.uid}',
-                'project' => '${entity.project}',
-                'slug' => '${entity.slug}',
-                'version' => '${entity.version}',
-                'commit' => '${entity.commit}',
-                'active' => '${entity.active}',
-                'parent' => '${entity.parent}',
-                'children' => '${entity.children}',
-                'refs' => '${entity.refs}',
-                'payload' => '${entity.payload}',
-                'payload_versions' => '${entity.payload_versions}',
+            'projects' => ['${project}'],
+            'entities' => [],
+            'payload_filters' => [],
+            'include_references' => [
+                'enabled' => $includeReferences,
+                'depth' => $includeReferences ? $depth : 0,
+                'modes' => ['primary'],
             ],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $templates
+     *
+     * @return array<int, string>
+     */
+    private function collectTemplatePlaceholders(array $templates): array
+    {
+        $found = [];
+
+        foreach ($templates as $template) {
+            if (!is_string($template) || $template === '') {
+                continue;
+            }
+
+            $count = preg_match_all(self::PLACEHOLDER_PATTERN, $template, $matches);
+            if ($count === false || $count === 0) {
+                continue;
+            }
+
+            foreach ($matches[1] as $placeholder) {
+                $found[$placeholder] = true;
+            }
+        }
+
+        $placeholders = array_keys($found);
+        sort($placeholders, SORT_STRING);
+
+        return $placeholders;
     }
 
     private function normaliseSlug($value): string

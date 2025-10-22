@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace AavionDB\Modules\Export;
 
 use AavionDB\Core\CommandResponse;
+use AavionDB\Core\Filesystem\PathLocator;
 use AavionDB\Core\Filters\FilterEngine;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
@@ -13,9 +14,11 @@ use AavionDB\Core\Resolver\ResolverEngine;
 use AavionDB\Core\Storage\BrainRepository;
 use DateTimeImmutable;
 use InvalidArgumentException;
+use JsonException;
 use Psr\Log\LoggerInterface;
 use Throwable;
 use function array_filter;
+use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_merge;
@@ -23,26 +26,59 @@ use function array_shift;
 use function array_unique;
 use function array_values;
 use function count;
+use function dirname;
 use function explode;
+use function file_put_contents;
 use function get_class;
 use function implode;
 use function in_array;
+use function is_numeric;
+use function is_scalar;
 use function is_array;
-use function preg_match;
+use function is_bool;
+use function is_dir;
 use function is_string;
+use function ltrim;
+use function json_decode;
+use function json_encode;
+use function json_last_error;
+use function ksort;
+use function mkdir;
+use function pathinfo;
+use function preg_match;
+use function preg_match_all;
+use function preg_replace;
 use function preg_split;
+use function rtrim;
 use function sprintf;
 use function str_contains;
+use function str_replace;
 use function str_starts_with;
 use function strpos;
 use function strtolower;
 use function substr;
 use function trim;
 use function uniqid;
+use const DIRECTORY_SEPARATOR;
+use const JSON_ERROR_NONE;
+use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
+use const PATHINFO_EXTENSION;
 
 final class ExportAgent
 {
     private const DEFAULT_EXPORT_DESCRIPTION = 'Sliced export that contains data to use as context-source (SoT) for the current session.';
+
+    private const DEFAULT_PRESET = 'context-unified';
+
+    /**
+     * @var array<int, string>
+     */
+    private const SUPPORTED_FORMATS = ['json', 'jsonl', 'markdown', 'text'];
+
+    private const PLACEHOLDER_PATTERN = '/\$\{([a-z0-9_.:\\-]+)\}/i';
 
     private ModuleContext $context;
 
@@ -54,6 +90,8 @@ final class ExportAgent
 
     private ResolverEngine $resolver;
 
+    private PathLocator $paths;
+
     public function __construct(ModuleContext $context)
     {
         $this->context = $context;
@@ -61,10 +99,12 @@ final class ExportAgent
         $this->logger = $context->logger();
         $this->filters = new FilterEngine($this->brains, $this->logger);
         $this->resolver = new ResolverEngine($this->brains, $this->logger, $this->filters);
+        $this->paths = $context->paths();
     }
 
     public function register(): void
     {
+        $this->ensureConfigDefaults();
         $this->registerParser();
         $this->registerExportCommand();
     }
@@ -111,6 +151,34 @@ final class ExportAgent
             'group' => 'export',
             'usage' => 'export <project|*> [entity[,entity[@version|#commit]]] [description="How to use this export"]',
         ]);
+    }
+
+    private function ensureConfigDefaults(): void
+    {
+        try {
+            if ($this->brains->getConfigValue('export.response', null, true) === null) {
+                $this->brains->setConfigValue('export.response', true, true);
+            }
+
+            if ($this->brains->getConfigValue('export.save', null, true) === null) {
+                $this->brains->setConfigValue('export.save', true, true);
+            }
+
+            if ($this->brains->getConfigValue('export.format', null, true) === null) {
+                $this->brains->setConfigValue('export.format', 'json', true);
+            }
+
+            if ($this->brains->getConfigValue('export.nest_children', null, true) === null) {
+                $this->brains->setConfigValue('export.nest_children', false, true);
+            }
+        } catch (Throwable $exception) {
+            $this->logger->warning('Unable to ensure export config defaults.', [
+                'exception' => [
+                    'message' => $exception->getMessage(),
+                    'class' => $exception::class,
+                ],
+            ]);
+        }
     }
 
     private function exportCommand(array $parameters): CommandResponse
@@ -168,6 +236,7 @@ final class ExportAgent
         $description = $this->normaliseDescription($parameters['description'] ?? null) ?? self::DEFAULT_EXPORT_DESCRIPTION;
         $usage = $this->normaliseDescription($parameters['usage'] ?? null) ?? $description;
         $params = $this->extractParams($parameters);
+        $destinationOverrides = $this->extractDestinationOverrides($parameters);
 
         return [
             'targets' => $normalizedTargets,
@@ -176,6 +245,7 @@ final class ExportAgent
             'usage' => $usage,
             'preset' => $preset,
             'params' => $params,
+            'destination_overrides' => $destinationOverrides,
             'raw' => $parameters,
         ];
     }
@@ -188,59 +258,64 @@ final class ExportAgent
     private function generateExport(array $input): array
     {
         $availableProjects = $this->brains->listProjects();
-        $presetSlug = $input['preset'];
-        $mode = $presetSlug !== null ? 'preset' : 'manual';
         $selectors = $input['selectors'];
-        $params = $input['params'];
         $description = $input['description'];
         $usage = $input['usage'];
 
-        $policies = $this->defaultPolicies();
-        $transform = ['whitelist' => [], 'blacklist' => [], 'post' => []];
-        $selectionFilters = [];
-        $payloadFilters = [];
-        $layoutId = self::DEFAULT_LAYOUT;
-        $layout = $this->fetchLayout($layoutId);
-        $preset = null;
-
-        if ($mode === 'preset') {
-            $preset = $this->brains->getPreset($presetSlug ?? '');
-            if ($preset === null) {
-                throw new InvalidArgumentException(sprintf('Preset "%s" not found.', $presetSlug));
-            }
-
-            $layoutId = $preset['meta']['layout'] ?? self::DEFAULT_LAYOUT;
-            $layout = $this->fetchLayout($layoutId);
-            $transform = $this->prepareTransform($preset['transform'] ?? []);
-            $policies = $this->normalisePolicies($preset['policies'] ?? []);
-            $selectionFilters = isset($preset['selection']['entities']) && is_array($preset['selection']['entities'])
-                ? array_values($preset['selection']['entities'])
-                : [];
-            $payloadFilters = isset($preset['selection']['payload_filters']) && is_array($preset['selection']['payload_filters'])
-                ? array_values($preset['selection']['payload_filters'])
-                : [];
-
-            if ($selectors !== []) {
-                throw new InvalidArgumentException('Entity selectors cannot be combined with preset-based exports.');
-            }
+        $presetSlug = $input['preset'] ?? null;
+        if ($presetSlug === null || $presetSlug === '') {
+            $presetSlug = self::DEFAULT_PRESET;
         }
 
-        $projects = $mode === 'preset'
-            ? $this->resolveProjectsForPreset($input['targets'], $preset ?? [], $availableProjects, $params)
-            : $this->resolveManualProjects($input['targets'], $availableProjects);
+        $preset = $this->brains->getPreset($presetSlug);
+        if ($preset === null) {
+            throw new InvalidArgumentException(sprintf('Preset "%s" not found.', $presetSlug));
+        }
+
+        $settings = isset($preset['settings']) && is_array($preset['settings']) ? $preset['settings'] : [];
+        $selection = isset($preset['selection']) && is_array($preset['selection']) ? $preset['selection'] : [];
+        $templates = isset($preset['templates']) && is_array($preset['templates']) ? $templates = $preset['templates'] : [];
+
+        if (!isset($templates['root']) || !isset($templates['entity'])) {
+            throw new InvalidArgumentException(sprintf('Preset "%s" is missing required templates (root/entity).', $presetSlug));
+        }
+
+        $variables = $this->resolveVariables($settings['variables'] ?? [], $input['params']);
+        $presetDestination = isset($settings['destination']) && is_array($settings['destination'])
+            ? $settings['destination']
+            : [];
+        $baseDestination = $this->collectDestinationDefaults($presetDestination);
+        $destination = $this->resolveDestination($baseDestination, $input['destination_overrides'] ?? []);
+        $options = isset($settings['options']) && is_array($settings['options']) ? $settings['options'] : [];
+        $missingPolicy = strtolower($options['missing_payload'] ?? 'empty');
+        if (!in_array($missingPolicy, ['empty', 'skip'], true)) {
+            $missingPolicy = 'empty';
+        }
+
+        $transform = $this->prepareTransform($settings['transform'] ?? []);
+        $policies = $this->normalisePolicies($settings['policies'] ?? []);
+        $selectionFilters = isset($selection['entities']) && is_array($selection['entities']) ? array_values($selection['entities']) : [];
+        $payloadFilters = isset($selection['payload_filters']) && is_array($selection['payload_filters']) ? array_values($selection['payload_filters']) : [];
+        $includeReferences = $this->normaliseIncludeReferences($selection['include_references'] ?? []);
+
+        $mode = $selectors !== [] ? 'manual' : 'preset';
+
+        $projects = $this->resolveProjectsForPreset(
+            $input['targets'],
+            $selection['projects'] ?? ['${project}'],
+            $availableProjects,
+            $variables
+        );
 
         if ($projects === []) {
             throw new InvalidArgumentException('No projects resolved for export.');
         }
 
-        if ($mode === 'manual' && \count($projects) > 1 && $selectors !== []) {
+        if ($selectors !== [] && count($projects) > 1) {
             throw new InvalidArgumentException('Entity selectors are only supported when exporting a single project.');
         }
 
-        $manualTargetMap = [];
-        if ($mode === 'manual') {
-            $manualTargetMap = $this->groupSelectorsByEntity($selectors);
-        }
+        $manualTargetMap = $selectors !== [] ? $this->groupSelectorsByEntity($selectors) : [];
 
         $projectSlices = [];
         $entities = [];
@@ -249,11 +324,10 @@ final class ExportAgent
         foreach ($projects as $projectSlug) {
             $slice = $this->buildProjectSlice($projectSlug, [
                 'mode' => $mode,
-                'preset' => $preset,
                 'selection_filters' => $selectionFilters,
                 'payload_filters' => $payloadFilters,
                 'transform' => $transform,
-                'params' => $params,
+                'params' => $variables,
                 'manual_targets' => $manualTargetMap,
             ]);
 
@@ -261,7 +335,7 @@ final class ExportAgent
                 continue;
             }
 
-            $projectSlices[] = $slice['project'];
+            $projectSlices[$projectSlug] = $slice;
             $entities = array_merge($entities, $slice['entities']);
             $totalVersions += $slice['version_count'];
         }
@@ -272,7 +346,7 @@ final class ExportAgent
                 'message' => 'No matching entities found for export.',
                 'meta' => [
                     'preset' => $presetSlug,
-                    'layout' => $layoutId,
+                    'format' => $destination['format'],
                     'scope' => 'empty',
                     'projects' => $projects,
                     'entity_count' => 0,
@@ -281,47 +355,98 @@ final class ExportAgent
             ];
         }
 
-        $stats = $this->buildStats($projectSlices, $entities, $totalVersions);
-        $index = $this->buildIndex($projectSlices, $entities);
+        $projectList = array_values(array_map(static fn (array $slice): array => $slice['project'], $projectSlices));
+
+        $stats = $this->buildStats($projectList, $entities, $totalVersions);
+        $index = $this->buildIndex($projectList, $entities);
         $scope = $this->determineScope($projects, $entities, $availableProjects);
         $action = $this->buildActionStringForContext($input, $projects, $presetSlug);
         $timestamp = $this->currentTimestamp();
 
-        $data = [
-            'preset' => $presetSlug,
-            'generated_at' => $timestamp,
+        $metaInfo = $this->buildExportMeta($preset['meta'] ?? [], $presetSlug, $destination, $options, $description, $usage, $scope, $action, $timestamp);
+        $guide = $this->buildGuideInfo($preset['meta'] ?? [], $usage);
+
+        $context = [
+            'meta' => $metaInfo,
+            'guide' => $guide,
+            'policies' => $policies,
+            'index' => $index,
+            'stats' => $stats,
             'scope' => $scope,
+            'action' => $action,
+            'preset' => $presetSlug,
             'description' => $description,
             'usage' => $usage,
-            'action' => $action,
-            'index' => $index,
-            'entities' => $entities,
-            'stats' => $stats,
-            'policies' => $policies,
+            'generated_at' => $timestamp,
+            'include_references' => $includeReferences,
         ];
 
-        $payload = $this->renderLayout($layout, $data);
+        $templatePlaceholders = $this->collectTemplatePlaceholders($templates);
+        $payloadPlaceholders = array_values(array_filter($templatePlaceholders, static fn (string $placeholder): bool => str_starts_with($placeholder, 'entity.payload.')));
+
+        $rendered = $this->renderExportContent(
+            $templates,
+            $destination['format'],
+            $context,
+            $projectSlices,
+            $variables,
+            [
+                'missing_payload' => $missingPolicy,
+                'payload_placeholders' => $payloadPlaceholders,
+                'nest_children' => $destination['nest_children'],
+            ]
+        );
+        $content = $rendered['content'];
+        $projectSummaries = $rendered['projects'];
+        $entitySummaries = $rendered['entities'];
+        $warnings = $rendered['warnings'];
+
+        $savedPath = null;
+        if ($destination['save']) {
+            $savedPath = $this->persistExport($content, $destination, $presetSlug, $projectList, $timestamp);
+        }
 
         $message = sprintf(
-            'Export generated for %d project%s (%d entit%s, %d version%s).',
-            count($projectSlices),
-            count($projectSlices) === 1 ? '' : 's',
+            'Export (%s) generated for %d project%s (%d entit%s, %d version%s).',
+            strtoupper($destination['format']),
+            count($projectList),
+            count($projectList) === 1 ? '' : 's',
             $stats['entities'],
             $stats['entities'] === 1 ? 'y' : 'ies',
             $stats['versions'],
             $stats['versions'] === 1 ? '' : 's'
         );
 
+        $payload = [
+            'format' => $destination['format'],
+            'meta' => $metaInfo,
+            'stats' => $stats,
+            'projects' => $projectSummaries,
+            'entities' => $entitySummaries,
+            'variables' => $variables,
+            'path' => $savedPath,
+        ];
+
+        if ($destination['response']) {
+            $payload['content'] = $content;
+        }
+
+        if (!empty($warnings)) {
+            $payload['warnings'] = $warnings;
+        }
+
         return [
             'payload' => $payload,
             'message' => $message,
             'meta' => [
                 'preset' => $presetSlug,
-                'layout' => $layout['meta']['id'] ?? $layoutId,
+                'format' => $destination['format'],
                 'scope' => $scope,
-                'projects' => array_map(static fn (array $project): string => $project['slug'], $projectSlices),
+                'projects' => array_map(static fn (array $project): string => $project['slug'], $projectList),
                 'entity_count' => $stats['entities'],
                 'version_count' => $stats['versions'],
+                'path' => $savedPath,
+                'warnings' => $warnings,
             ],
         ];
     }
@@ -344,38 +469,1202 @@ final class ExportAgent
     }
 
     /**
+     * @param array<string, mixed> $base
+     * @param array<string, mixed> $overrides
+     *
+     * @return array{path: ?string, response: bool, save: bool, format: string, nest_children: bool}
+     */
+    private function resolveDestination(array $base, array $overrides): array
+    {
+        $destination = [
+            'path' => $this->normaliseDestinationPath($base['path'] ?? null),
+            'response' => $this->normalizeBoolean($base['response'] ?? true, true),
+            'save' => $this->normalizeBoolean($base['save'] ?? true, true),
+            'format' => strtolower(trim((string) ($base['format'] ?? 'json'))),
+            'nest_children' => $this->normalizeBoolean($base['nest_children'] ?? false, false),
+        ];
+
+        if (isset($overrides['path'])) {
+            $destination['path'] = $this->normaliseDestinationPath($overrides['path']);
+        }
+
+        if (array_key_exists('response', $overrides)) {
+            $destination['response'] = $this->normalizeBoolean($overrides['response'], $destination['response']);
+        }
+
+        if (array_key_exists('save', $overrides)) {
+            $destination['save'] = $this->normalizeBoolean($overrides['save'], $destination['save']);
+        }
+
+        if (isset($overrides['format'])) {
+            $destination['format'] = strtolower(trim((string) $overrides['format']));
+        }
+
+        if (array_key_exists('nest_children', $overrides)) {
+            $destination['nest_children'] = $this->normalizeBoolean($overrides['nest_children'], $destination['nest_children']);
+        }
+
+        if (!in_array($destination['format'], self::SUPPORTED_FORMATS, true)) {
+            throw new InvalidArgumentException(sprintf('Unsupported export format "%s".', $destination['format']));
+        }
+
+        return $destination;
+    }
+
+    /**
+     * @param array<string, mixed> $presetDestination
+     *
      * @return array<string, mixed>
      */
-    private function fetchLayout(string $layoutId): array
+    private function collectDestinationDefaults(array $presetDestination): array
     {
-        $layout = $this->brains->getExportLayout($layoutId);
-        if ($layout !== null) {
-            return $layout;
+        $defaults = [];
+
+        $path = $this->brains->getConfigValue('export.path', null, true);
+        if ($path !== null && $path !== '') {
+            $defaults['path'] = $path;
+        }
+
+        $response = $this->brains->getConfigValue('export.response', null, true);
+        if ($response !== null) {
+            $defaults['response'] = $response;
+        }
+
+        $save = $this->brains->getConfigValue('export.save', null, true);
+        if ($save !== null) {
+            $defaults['save'] = $save;
+        }
+
+        $format = $this->brains->getConfigValue('export.format', null, true);
+        if ($format !== null) {
+            $defaults['format'] = $format;
+        }
+
+        $nestChildren = $this->brains->getConfigValue('export.nest_children', null, true);
+        if ($nestChildren !== null) {
+            $defaults['nest_children'] = $nestChildren;
+        }
+
+        return array_merge($defaults, $presetDestination);
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $definitions
+     * @param array<string, mixed>                $input
+     *
+     * @return array<string, mixed>
+     */
+    private function resolveVariables(array $definitions, array $input): array
+    {
+        $resolved = [];
+        $remaining = $input;
+
+        foreach ($definitions as $name => $config) {
+            if (!is_array($config)) {
+                $config = [];
+            }
+
+            $type = isset($config['type']) ? (string) $config['type'] : 'text';
+            $required = isset($config['required']) ? (bool) $config['required'] : false;
+            $default = $config['default'] ?? null;
+
+            $value = $remaining[$name] ?? $default;
+
+            if ($value === null) {
+                if ($required) {
+                    throw new InvalidArgumentException(sprintf('Preset parameter "%s" is required.', $name));
+                }
+
+                unset($remaining[$name]);
+                continue;
+            }
+
+            $resolved[$name] = $this->castVariable($value, $type);
+            unset($remaining[$name]);
+        }
+
+        foreach ($remaining as $name => $value) {
+            $resolved[$name] = $value;
+        }
+
+        ksort($resolved);
+
+        return $resolved;
+    }
+
+    /**
+     * @param mixed $value
+     *
+     * @return mixed
+     */
+    private function castVariable($value, string $type)
+    {
+        $normalized = strtolower(trim($type));
+
+        switch ($normalized) {
+            case 'int':
+            case 'integer':
+                return (int) $value;
+
+            case 'number':
+            case 'float':
+                return (float) $value;
+
+            case 'bool':
+            case 'boolean':
+                return $this->normalizeBoolean($value, false);
+
+            case 'comma_list':
+            case 'csv':
+                if (is_array($value)) {
+                    return array_values(array_filter(array_map(static fn ($entry): string => trim((string) $entry), $value), static fn (string $entry): bool => $entry !== ''));
+                }
+
+                $split = preg_split('/\s*,\s*/', (string) $value) ?: [];
+
+                return array_values(array_filter(array_map(static fn ($entry): string => trim((string) $entry), $split), static fn (string $entry): bool => $entry !== ''));
+
+            case 'array':
+                if (is_array($value)) {
+                    return $value;
+                }
+
+                if (is_string($value)) {
+                    $decoded = json_decode($value, true);
+                    if (is_array($decoded)) {
+                        return $decoded;
+                    }
+                }
+
+                return (array) $value;
+
+            case 'object':
+                if (is_array($value)) {
+                    return $value;
+                }
+
+                if (is_string($value)) {
+                    $decoded = json_decode($value, true);
+                    if (is_array($decoded)) {
+                        return $decoded;
+                    }
+                }
+
+                return [];
+
+            case 'json':
+                if (is_string($value)) {
+                    $decoded = json_decode($value, true);
+                    if (json_last_error() === JSON_ERROR_NONE && $decoded !== null) {
+                        return $decoded;
+                    }
+                }
+
+                return $value;
+
+            default:
+                return $value;
+        }
+    }
+
+    private function normalizeBoolean($value, bool $default): bool
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) === 1;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if ($normalized === '') {
+                return $default;
+            }
+
+            if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+
+            if (in_array($normalized, ['0', 'false', 'no', 'off'], true)) {
+                return false;
+            }
+        }
+
+        return $default;
+    }
+
+    /**
+     * @param mixed $path
+     */
+    private function normaliseDestinationPath($path): ?string
+    {
+        if ($path === null) {
+            return null;
+        }
+
+        $resolved = trim((string) $path);
+
+        return $resolved === '' ? null : $resolved;
+    }
+
+    /**
+     * @param mixed $config
+     *
+     * @return array{enabled: bool, depth: int, modes: array<int, string>}
+     */
+    private function normaliseIncludeReferences($config): array
+    {
+        if (!is_array($config)) {
+            $config = [];
+        }
+
+        $depth = isset($config['depth']) && is_numeric($config['depth'])
+            ? max(0, (int) $config['depth'])
+            : 0;
+
+        $enabled = isset($config['enabled']) ? (bool) $config['enabled'] : ($depth > 0);
+
+        $modes = [];
+        if (isset($config['modes']) && is_array($config['modes'])) {
+            $modes = array_values(array_filter(array_map(
+                static fn ($value): string => trim((string) $value),
+                $config['modes']
+            ), static fn (string $value): bool => $value !== ''));
         }
 
         return [
-            'meta' => [
-                'id' => $layoutId,
-                'description' => 'Fallback export layout.',
-            ],
-            'format' => 'json',
-            'template' => [
-                'meta' => [
-                    'layout' => $layoutId,
-                    'preset' => '${preset}',
-                    'generated_at' => '${generated_at}',
-                    'scope' => '${scope}',
-                    'description' => '${description}',
-                    'action' => '${action}',
-                ],
-                'guide' => [
-                    'usage' => '${usage}',
-                ],
-                'index' => '${index}',
-                'entities' => '${entities}',
-                'stats' => '${stats}',
-            ],
+            'enabled' => $enabled,
+            'depth' => $enabled ? $depth : 0,
+            'modes' => $modes,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $presetMeta
+     * @param array{path: ?string, response: bool, save: bool, format: string, nest_children: bool} $destination
+     *
+     * @return array<string, mixed>
+     */
+    private function buildExportMeta(
+        array $presetMeta,
+        string $presetSlug,
+        array $destination,
+        array $options,
+        string $description,
+        string $usage,
+        string $scope,
+        string $action,
+        string $timestamp
+    ): array {
+        $title = isset($presetMeta['title']) ? trim((string) $presetMeta['title']) : '';
+        if ($title === '') {
+            $title = sprintf('Export %s', $presetSlug);
+        }
+
+        $metaDescription = isset($presetMeta['description']) ? trim((string) $presetMeta['description']) : null;
+        $presetUsage = isset($presetMeta['usage']) ? trim((string) $presetMeta['usage']) : null;
+
+        return [
+            'title' => $title,
+            'description' => $description,
+            'preset_description' => $metaDescription,
+            'usage' => $usage,
+            'preset_usage' => $presetUsage,
+            'preset' => $presetSlug,
+            'format' => $destination['format'],
+            'generated_at' => $timestamp,
+            'scope' => $scope,
+            'action' => $action,
+            'tags' => isset($presetMeta['tags']) && is_array($presetMeta['tags']) ? $presetMeta['tags'] : [],
+            'destination' => [
+                'path' => $destination['path'],
+                'response' => $destination['response'],
+                'save' => $destination['save'],
+                'nest_children' => $destination['nest_children'],
+            ],
+            'flags' => [
+                'read_only' => (bool) ($presetMeta['read_only'] ?? false),
+                'immutable' => (bool) ($presetMeta['immutable'] ?? false),
+            ],
+            'missing_payload_policy' => $options['missing_payload'] ?? 'empty',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $presetMeta
+     *
+     * @return array<string, mixed>
+     */
+    private function buildGuideInfo(array $presetMeta, string $usage): array
+    {
+        $notes = [];
+        $metaDescription = isset($presetMeta['description']) ? trim((string) $presetMeta['description']) : '';
+        if ($metaDescription !== '') {
+            $notes[] = $metaDescription;
+        }
+
+        $presetUsage = isset($presetMeta['usage']) ? trim((string) $presetMeta['usage']) : '';
+
+        return [
+            'usage' => $presetUsage !== '' ? $presetUsage : $usage,
+            'notes' => $notes,
+        ];
+    }
+
+    /**
+     * @param array<string, string>                            $templates
+     * @param array<string, mixed>                             $context
+     * @param array<string, array<string, mixed>>              $projectSlices
+     * @param array<string, mixed>                             $variables
+     * @param array<string, mixed>                             $options
+     *
+     * @return array{content: string, projects: array<int, array<string, mixed>>, entities: array<int, array<string, string>>, warnings: array<int, array<string, string>>}
+     */
+    private function renderExportContent(
+        array $templates,
+        string $format,
+        array $context,
+        array $projectSlices,
+        array $variables,
+        array $options
+    ): array {
+        $format = strtolower($format);
+
+        $missingPolicy = $options['missing_payload'] ?? 'empty';
+        $payloadPlaceholders = $options['payload_placeholders'] ?? [];
+        $nestChildren = (bool) ($options['nest_children'] ?? false);
+
+        $globalReplacements = $this->buildGlobalReplacements($format, $context, $variables);
+
+        $projectStrings = [];
+        $projectSummaries = [];
+        $entitySummaries = [];
+        $entityStringsGlobal = [];
+        $warnings = [];
+
+        foreach ($projectSlices as $projectSlug => $slice) {
+            $project = $slice['project'];
+            $projectReplacements = $this->buildProjectReplacements($project, $format);
+
+            $orderedEntities = $this->orderEntitiesForProject($slice['entities'], $project['slug'] ?? (string) $projectSlug, $nestChildren);
+
+            $entityStrings = [];
+
+            foreach ($orderedEntities as $ordered) {
+                $entity = $ordered['entity'];
+                $depth = $ordered['depth'];
+
+                $result = $this->renderEntityTemplate(
+                    $templates['entity'],
+                    $format,
+                    $globalReplacements,
+                    $projectReplacements,
+                    $entity,
+                    $depth,
+                    $payloadPlaceholders,
+                    $missingPolicy,
+                    $project['slug'] ?? (string) $projectSlug
+                );
+
+                $warnings = array_merge($warnings, $result['warnings']);
+
+                if ($result['skipped']) {
+                    continue;
+                }
+
+                $entityStrings[] = $result['content'];
+                $entityStringsGlobal[] = $result['content'];
+                $entitySummaries[] = [
+                    'uid' => $entity['uid'],
+                    'project' => $entity['project'],
+                    'slug' => $entity['slug'],
+                ];
+            }
+
+            if ($entityStrings === []) {
+                continue;
+            }
+
+            $projectSummaries[] = $project;
+
+            $entitiesAggregate = $this->aggregateStrings($entityStrings, $format);
+
+            $projectTemplate = $templates['project'] ?? '';
+            if ($projectTemplate !== '') {
+                $projectStrings[] = $this->renderString(
+                    $projectTemplate,
+                    array_merge($globalReplacements, $projectReplacements, ['entities' => $entitiesAggregate])
+                );
+            } else {
+                $projectStrings[] = $entitiesAggregate;
+            }
+        }
+
+        $rootReplacements = array_merge(
+            $globalReplacements,
+            [
+                'projects' => $this->aggregateStrings($projectStrings, $format),
+                'entities' => $this->aggregateStrings($entityStringsGlobal, $format),
+            ]
+        );
+
+        $contentRaw = $this->renderString($templates['root'], $rootReplacements);
+        $content = $this->finaliseContent($contentRaw, $format);
+
+        return [
+            'content' => $content,
+            'projects' => $projectSummaries,
+            'entities' => $entitySummaries,
+            'warnings' => $warnings,
+        ];
+    }
+
+    private function finaliseContent(string $contentRaw, string $format): string
+    {
+        switch ($format) {
+            case 'json':
+                try {
+                    $decoded = json_decode($contentRaw, true, 512, JSON_THROW_ON_ERROR);
+                } catch (JsonException $exception) {
+                    throw new InvalidArgumentException('Rendered JSON export is invalid: ' . $exception->getMessage(), 0, $exception);
+                }
+
+                try {
+                    return json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) ?: '';
+                } catch (JsonException $exception) {
+                    throw new InvalidArgumentException('Failed to encode JSON export: ' . $exception->getMessage(), 0, $exception);
+                }
+
+            case 'jsonl':
+                $normalised = implode("\n", array_filter(array_map(
+                    static fn (string $line): string => trim($line),
+                    preg_split('/\r?\n/', $contentRaw) ?: []
+                ), static fn (string $line): bool => $line !== ''));
+
+                return $normalised === '' ? '' : $normalised . "\n";
+
+            case 'markdown':
+            case 'text':
+            default:
+                return rtrim($contentRaw) . "\n";
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $variables
+     *
+     * @return array<string, string>
+     */
+    private function buildGlobalReplacements(string $format, array $context, array $variables): array
+    {
+        $map = [];
+
+        if (isset($context['meta']) && is_array($context['meta'])) {
+            $map += $this->buildObjectReplacements('meta', $context['meta'], $format);
+        }
+
+        if (isset($context['guide']) && is_array($context['guide'])) {
+            $map += $this->buildObjectReplacements('guide', $context['guide'], $format);
+        }
+
+        if (isset($context['policies']) && is_array($context['policies'])) {
+            $map += $this->buildObjectReplacements('policies', $context['policies'], $format);
+        }
+
+        if (isset($context['index']) && is_array($context['index'])) {
+            $map += $this->buildObjectReplacements('index', $context['index'], $format);
+        }
+
+        if (isset($context['stats']) && is_array($context['stats'])) {
+            $map += $this->buildObjectReplacements('stats', $context['stats'], $format);
+        }
+
+        $scalarKeys = ['preset', 'scope', 'action', 'description', 'usage', 'generated_at'];
+        foreach ($scalarKeys as $key) {
+            if (!array_key_exists($key, $context)) {
+                continue;
+            }
+
+            $map[$key] = $this->formatValue($context[$key], $format);
+        }
+
+        $map += $this->buildParamReplacements($variables, $format);
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $value
+     *
+     * @return array<string, string>
+     */
+    private function buildObjectReplacements(string $prefix, array $value, string $format): array
+    {
+        $map = [$prefix => $this->formatValue($value, $format, 'json')];
+
+        foreach ($value as $key => $child) {
+            $map += $this->buildValueReplacements($prefix . '.' . $key, $child, $format);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param mixed $value
+     *
+     * @return array<string, string>
+     */
+    private function buildValueReplacements(string $prefix, $value, string $format): array
+    {
+        if (is_array($value)) {
+            $map = [$prefix => $this->formatValue($value, $format, 'json')];
+            foreach ($value as $key => $child) {
+                $map += $this->buildValueReplacements($prefix . '.' . $key, $child, $format);
+            }
+
+            return $map;
+        }
+
+        return [$prefix => $this->formatValue($value, $format)];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function buildParamReplacements(array $variables, string $format): array
+    {
+        $map = [];
+
+        foreach ($variables as $name => $value) {
+            $map['param.' . $name] = $this->formatValue($value, $format, is_array($value) ? 'json' : 'default');
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function buildProjectReplacements(array $project, string $format): array
+    {
+        $map = [];
+
+        foreach ($project as $key => $value) {
+            $map['project.' . $key] = $this->formatValue($value, $format);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     *
+     * @return array<string, string>
+     */
+    private function buildEntityReplacements(array $entity, string $format, int $depth): array
+    {
+        $map = [];
+
+        foreach ($entity as $key => $value) {
+            if ($key === 'payload') {
+                $map['entity.payload'] = $this->formatValue($value, $format, in_array($format, ['markdown', 'text'], true) ? 'pretty_json' : 'json');
+                continue;
+            }
+
+            if ($key === 'payload_versions') {
+                $map['entity.payload_versions'] = $this->formatValue($value, $format, 'json');
+                continue;
+            }
+
+            if ($key === 'children' || $key === 'refs') {
+                if (in_array($format, ['markdown', 'text'], true)) {
+                    $map['entity.' . $key] = $value === [] ? '' : implode(', ', array_map(static fn ($entry): string => (string) $entry, $value));
+                } else {
+                    $map['entity.' . $key] = $this->formatValue($value, $format, 'json');
+                }
+                continue;
+            }
+
+            $map['entity.' . $key] = $this->formatValue($value, $format);
+        }
+
+        $displayName = $this->resolveEntityDisplayName($entity);
+        $map['entity.display_name'] = $this->formatValue($displayName, $format);
+        $map['entity.payload_pretty'] = $this->formatValue($entity['payload'] ?? null, $format, 'pretty_json');
+        $map['entity.payload_inline'] = $this->formatValue($entity['payload'] ?? null, $format, 'json');
+        $map['entity.payload_plain'] = $this->formatValue($entity['payload'] ?? null, $format, 'plain_payload');
+
+        $map['entity.level'] = $this->formatValue($depth, $format);
+        $map['entity.indent'] = $format === 'json' || $format === 'jsonl'
+            ? ''
+            : str_repeat('  ', max(0, $depth));
+        $map['entity.heading_prefix'] = $this->computeHeadingPrefix($depth);
+
+        if (isset($entity['payload']) && is_array($entity['payload'])) {
+            $this->collectPayloadReplacements($entity['payload'], 'entity.payload', $map, $format);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     */
+    private function resolveEntityDisplayName(array $entity): string
+    {
+        $payload = $entity['payload'] ?? null;
+        if (is_array($payload)) {
+            foreach (['title', 'name', 'label'] as $candidate) {
+                if (isset($payload[$candidate]) && is_string($payload[$candidate])) {
+                    $value = trim($payload[$candidate]);
+                    if ($value !== '') {
+                        return $value;
+                    }
+                }
+            }
+        }
+
+        return (string) ($entity['slug'] ?? $entity['uid'] ?? '');
+    }
+
+    /**
+     * @param array<string|int, mixed> $payload
+     * @param array<string, string>     $map
+     */
+    private function collectPayloadReplacements(array $payload, string $prefix, array &$map, string $format): void
+    {
+        foreach ($payload as $key => $value) {
+            $path = $prefix . '.' . (string) $key;
+            if (is_array($value)) {
+                $map[$path] = $this->formatValue($value, $format, in_array($format, ['markdown', 'text'], true) ? 'plain_payload' : 'json');
+                $this->collectPayloadReplacements($value, $path, $map, $format);
+            } else {
+                $map[$path] = $this->formatValue($value, $format);
+            }
+        }
+    }
+
+    private function computeHeadingPrefix(int $depth): string
+    {
+        $base = '###';
+        if ($depth <= 0) {
+            return $base;
+        }
+
+        return $base . str_repeat('#', $depth);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $entities
+     *
+     * @return array<int, array{entity: array<string, mixed>, depth: int}>
+     */
+    private function orderEntitiesForProject(array $entities, string $projectSlug, bool $nestChildren): array
+    {
+        if (!$nestChildren) {
+            return array_map(static fn (array $entity): array => ['entity' => $entity, 'depth' => 0], $entities);
+        }
+
+        $entityMap = [];
+        foreach ($entities as $entity) {
+            $slug = $entity['slug'] ?? null;
+            if ($slug === null) {
+                continue;
+            }
+            $entityMap[$slug] = $entity;
+        }
+
+        $childrenMap = [];
+        $hasParent = [];
+
+        foreach ($entityMap as $slug => $entity) {
+            if (!isset($entity['children']) || !is_array($entity['children'])) {
+                continue;
+            }
+
+            foreach ($entity['children'] as $childReference) {
+                if (!is_string($childReference) || $childReference === '') {
+                    continue;
+                }
+
+                [$childProject, $childSlug] = $this->splitEntityReference($childReference);
+                if ($childProject !== $projectSlug) {
+                    continue;
+                }
+
+                if (!isset($entityMap[$childSlug])) {
+                    continue;
+                }
+
+                $childrenMap[$slug][] = $childSlug;
+                $hasParent[$childSlug] = true;
+            }
+        }
+
+        $order = [];
+        $visited = [];
+
+        foreach ($entities as $entity) {
+            $slug = $entity['slug'] ?? null;
+            if ($slug === null || isset($visited[$slug])) {
+                continue;
+            }
+
+            if (isset($hasParent[$slug])) {
+                continue;
+            }
+
+            $this->collectEntityOrder($slug, $entityMap, $childrenMap, $order, $visited, 0);
+        }
+
+        foreach ($entityMap as $slug => $entity) {
+            if (!isset($visited[$slug])) {
+                $this->collectEntityOrder($slug, $entityMap, $childrenMap, $order, $visited, 0);
+            }
+        }
+
+        return $order;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $entityMap
+     * @param array<string, array<int, string>>   $childrenMap
+     * @param array<int, array{entity: array<string, mixed>, depth: int}> $order
+     * @param array<string, bool>                 $visited
+     */
+    private function collectEntityOrder(string $slug, array $entityMap, array $childrenMap, array &$order, array &$visited, int $depth): void
+    {
+        if (isset($visited[$slug])) {
+            return;
+        }
+
+        $visited[$slug] = true;
+
+        if (!isset($entityMap[$slug])) {
+            return;
+        }
+
+        $order[] = ['entity' => $entityMap[$slug], 'depth' => $depth];
+
+        if (!isset($childrenMap[$slug])) {
+            return;
+        }
+
+        foreach ($childrenMap[$slug] as $childSlug) {
+            $this->collectEntityOrder($childSlug, $entityMap, $childrenMap, $order, $visited, $depth + 1);
+        }
+    }
+
+    private function splitEntityReference(string $reference): array
+    {
+        $parts = explode('.', $reference, 2);
+        if (count($parts) === 1) {
+            return [$parts[0], $parts[0]];
+        }
+
+        return [$parts[0], $parts[1]];
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     * @param array<string, string> $projectReplacements
+     * @param array<int, string>    $payloadPlaceholders
+     *
+     * @return array{content: string, warnings: array<int, array<string, string>>, skipped: bool}
+     */
+    private function renderEntityTemplate(
+        string $template,
+        string $format,
+        array $globalReplacements,
+        array $projectReplacements,
+        array $entity,
+        int $depth,
+        array $payloadPlaceholders,
+        string $missingPolicy,
+        string $projectSlug
+    ): array {
+        $entityReplacements = $this->buildEntityReplacements($entity, $format, $depth);
+
+        $missing = [];
+        foreach ($payloadPlaceholders as $placeholder) {
+            if (!array_key_exists($placeholder, $entityReplacements)) {
+                $missing[] = $placeholder;
+            }
+        }
+
+        $warnings = [];
+        $entitySlug = (string) ($entity['slug'] ?? $entity['uid'] ?? '');
+
+        if ($missing !== []) {
+            if ($missingPolicy === 'skip') {
+                foreach ($missing as $placeholder) {
+                    $warnings[] = $this->buildMissingFieldWarning($projectSlug, $entitySlug, $placeholder, 'skip');
+                }
+
+                return [
+                    'content' => '',
+                    'warnings' => $warnings,
+                    'skipped' => true,
+                ];
+            }
+
+            foreach ($missing as $placeholder) {
+                $entityReplacements[$placeholder] = $this->missingPlaceholderValue($format);
+                $warnings[] = $this->buildMissingFieldWarning($projectSlug, $entitySlug, $placeholder, 'empty');
+            }
+        }
+
+        $content = $this->renderString(
+            $template,
+            array_merge($globalReplacements, $projectReplacements, $entityReplacements)
+        );
+
+        return [
+            'content' => $content,
+            'warnings' => $warnings,
+            'skipped' => false,
+        ];
+    }
+
+    private function missingPlaceholderValue(string $format): string
+    {
+        return in_array($format, ['json', 'jsonl'], true) ? 'null' : '';
+    }
+
+    private function buildMissingFieldWarning(string $projectSlug, string $entitySlug, string $placeholder, string $policy): array
+    {
+        return [
+            'type' => 'missing_payload_field',
+            'project' => $projectSlug,
+            'entity' => $entitySlug,
+            'placeholder' => $placeholder,
+            'policy' => $policy,
+            'message' => sprintf('Placeholder "%s" missing in entity "%s" (%s); policy=%s.', $placeholder, $entitySlug, $projectSlug, $policy),
+        ];
+    }
+
+    private function aggregateStrings(array $strings, string $format): string
+    {
+        if ($strings === []) {
+            return $format === 'json' ? '[]' : '';
+        }
+
+        switch ($format) {
+            case 'json':
+                $trimmed = array_map(static fn (string $value): string => trim($value), $strings);
+
+                return '[' . implode(',', $trimmed) . ']';
+
+            case 'jsonl':
+                return implode("\n", array_filter(array_map(static fn (string $value): string => trim($value), $strings), static fn (string $line): bool => $line !== ''));
+
+            case 'markdown':
+            case 'text':
+            default:
+                return implode("\n\n", array_map(static fn (string $value): string => rtrim($value), $strings));
+        }
+    }
+
+    /**
+     * @param array<string, string> $replacements
+     */
+    private function renderString(string $template, array $replacements): string
+    {
+        return preg_replace_callback(
+            self::PLACEHOLDER_PATTERN,
+            static function (array $matches) use ($replacements): string {
+                $key = $matches[1];
+
+                return array_key_exists($key, $replacements)
+                    ? (string) $replacements[$key]
+                    : '';
+            },
+            $template
+        ) ?? '';
+    }
+
+    /**
+     * @param array<string, string> $templates
+     *
+     * @return array<int, string>
+     */
+    private function collectTemplatePlaceholders(array $templates): array
+    {
+        $placeholders = [];
+
+        foreach ($templates as $template) {
+            if (!is_string($template) || $template === '') {
+                continue;
+            }
+
+            $count = preg_match_all(self::PLACEHOLDER_PATTERN, $template, $matches);
+            if ($count === false || $count === 0) {
+                continue;
+            }
+
+            foreach ($matches[1] as $placeholder) {
+                $placeholders[$placeholder] = true;
+            }
+        }
+
+        return array_keys($placeholders);
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function formatValue($value, string $format, string $mode = 'default'): string
+    {
+        if ($mode === 'plain_payload') {
+            return $this->describePayloadPlain($value, $format);
+        }
+
+        if ($mode === 'json' || in_array($format, ['json', 'jsonl'], true)) {
+            if ($mode === 'pretty_json') {
+                return $this->encodePrettyJson($value);
+            }
+
+            return $this->encodeJson($value);
+        }
+
+        if ($mode === 'pretty_json') {
+            return $this->encodePrettyJson($value);
+        }
+
+        if ($mode === 'json') {
+            return $this->encodeJson($value);
+        }
+
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        if (is_array($value)) {
+            if (in_array($format, ['markdown', 'text'], true)) {
+                return $this->describePayloadPlain($value, $format);
+            }
+
+            return $this->encodePrettyJson($value);
+        }
+
+        return $this->encodePrettyJson($value);
+    }
+
+    private function describePayloadPlain($value, string $format, int $depth = 0): string
+    {
+        if (in_array($format, ['json', 'jsonl'], true)) {
+            return $this->encodePrettyJson($value);
+        }
+
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        if (!is_array($value)) {
+            return $this->encodePrettyJson($value);
+        }
+
+        if ($value === []) {
+            return '';
+        }
+
+        $indent = str_repeat('  ', $depth);
+        $lines = [];
+
+        if ($this->isListArray($value)) {
+            foreach ($value as $item) {
+                $entry = $this->describePayloadPlain($item, $format, $depth + 1);
+                $lines[] = $indent . '- ' . ($entry === '' ? '(empty)' : $entry);
+            }
+
+            return implode("\n", $lines);
+        }
+
+        foreach ($value as $key => $item) {
+            $label = (string) $key;
+            if (is_array($item)) {
+                $child = $this->describePayloadPlain($item, $format, $depth + 1);
+                $lines[] = $indent . '- ' . $label . ':' . ($child === '' ? '' : "\n" . $child);
+            } else {
+                $scalar = $this->describePayloadPlain($item, $format, $depth + 1);
+                $lines[] = $indent . '- ' . $label . ': ' . ($scalar === '' ? '(empty)' : $scalar);
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function isListArray(array $value): bool
+    {
+        return array_values($value) === $value;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function encodeJson($value): string
+    {
+        try {
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new InvalidArgumentException('Failed to encode JSON value: ' . $exception->getMessage(), 0, $exception);
+        }
+
+        return $encoded === false ? '' : $encoded;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function encodePrettyJson($value): string
+    {
+        try {
+            $encoded = json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new InvalidArgumentException('Failed to encode JSON value: ' . $exception->getMessage(), 0, $exception);
+        }
+
+        return $encoded === false ? '' : $encoded;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $projectList
+     */
+    private function persistExport(string $content, array $destination, string $presetSlug, array $projectList, string $timestamp): string
+    {
+        $format = $destination['format'];
+        $extension = $this->determineExtension($format);
+
+        if ($destination['path'] === null) {
+            $directory = $this->paths->userExports();
+            $this->ensureDirectory($directory);
+            $filename = $this->buildExportFilename($presetSlug, $projectList, $timestamp, $extension);
+            $targetPath = $directory . DIRECTORY_SEPARATOR . $filename;
+        } else {
+            $resolved = $this->resolveOutputPath($destination['path']);
+            if ($this->looksLikeDirectory($resolved)) {
+                $this->ensureDirectory($resolved);
+                $filename = $this->buildExportFilename($presetSlug, $projectList, $timestamp, $extension);
+                $targetPath = rtrim($resolved, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $filename;
+            } else {
+                $this->ensureDirectory(dirname($resolved));
+                $targetPath = $resolved;
+                $currentExtension = strtolower((string) pathinfo($targetPath, PATHINFO_EXTENSION));
+                if ($currentExtension === '') {
+                    $targetPath .= '.' . $extension;
+                }
+            }
+        }
+
+        if (@file_put_contents($targetPath, $content) === false) {
+            throw new InvalidArgumentException(sprintf('Unable to write export file "%s".', $targetPath));
+        }
+
+        return $targetPath;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $projectList
+     */
+    private function buildExportFilename(string $presetSlug, array $projectList, string $timestamp, string $extension): string
+    {
+        $projectSlug = 'multi';
+        if (count($projectList) === 1) {
+            $projectSlug = $this->sanitiseFilenameSegment((string) ($projectList[0]['slug'] ?? 'project'));
+        }
+
+        $presetSegment = $this->sanitiseFilenameSegment($presetSlug);
+        $timestampSegment = str_replace([':', ' '], '-', $timestamp);
+
+        return sprintf('%s-%s-%s.%s', $projectSlug, $presetSegment, $timestampSegment, $extension);
+    }
+
+    private function resolveOutputPath(string $path): string
+    {
+        $normalised = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, trim($path));
+        if ($normalised === '') {
+            return $this->paths->userExports();
+        }
+
+        if ($this->isAbsolutePath($normalised)) {
+            return $normalised;
+        }
+
+        return $this->paths->root() . DIRECTORY_SEPARATOR . ltrim($normalised, DIRECTORY_SEPARATOR);
+    }
+
+    private function ensureDirectory(string $path): void
+    {
+        if (is_dir($path)) {
+            return;
+        }
+
+        if (!@mkdir($path, 0775, true) && !is_dir($path)) {
+            throw new InvalidArgumentException(sprintf('Unable to create directory "%s".', $path));
+        }
+    }
+
+    private function looksLikeDirectory(string $path): bool
+    {
+        if ($path === '') {
+            return true;
+        }
+
+        if (substr($path, -1) === DIRECTORY_SEPARATOR) {
+            return true;
+        }
+
+        return !str_contains($path, '.');
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        if ($path[0] === DIRECTORY_SEPARATOR) {
+            return true;
+        }
+
+        return preg_match('/^[A-Za-z]:\\\\/', $path) === 1;
+    }
+
+    private function determineExtension(string $format): string
+    {
+        return match ($format) {
+            'jsonl' => 'jsonl',
+            'markdown' => 'md',
+            'text' => 'txt',
+            default => 'json',
+        };
+    }
+
+    private function sanitiseFilenameSegment(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/[^a-z0-9\-_.]/', '-', $value) ?? $value;
+
+        return trim($value, '-_.') ?: 'export';
     }
 
     /**
@@ -438,16 +1727,13 @@ final class ExportAgent
      */
     private function resolveProjectsForPreset(
         array $targets,
-        array $preset,
+        array $projectSelectors,
         array $availableProjects,
         array $params
     ): array {
-        $selectors = [];
-        if (isset($preset['selection']['projects']) && is_array($preset['selection']['projects'])) {
-            $selectors = array_values($preset['selection']['projects']);
-        }
+        $selectors = $projectSelectors;
 
-        if ($selectors === []) {
+        if (!is_array($selectors) || $selectors === []) {
             $selectors = ['${project}'];
         }
 
@@ -767,65 +2053,6 @@ final class ExportAgent
         $selectorStrings = array_map(static fn (array $selector): string => $selector['original'], $input['selectors']);
 
         return $this->buildActionString($projectArgument, $selectorStrings);
-    }
-
-    /**
-     * @param array<string, mixed> $layout
-     * @param array<string, mixed> $data
-     *
-     * @return array<string, mixed>
-     */
-    private function renderLayout(array $layout, array $data): array
-    {
-        $template = isset($layout['template']) && is_array($layout['template']) ? $layout['template'] : [];
-        $payload = $this->replacePlaceholders($template, $data);
-
-        $entityTemplate = isset($layout['entity_template']) && is_array($layout['entity_template'])
-            ? $layout['entity_template']
-            : null;
-
-        if ($entityTemplate !== null) {
-            $rendered = [];
-            foreach ($data['entities'] as $entity) {
-                $rendered[] = $this->replacePlaceholders($entityTemplate, ['entity' => $entity] + $data);
-            }
-            $payload['entities'] = $rendered;
-        } else {
-            $payload['entities'] = $data['entities'];
-        }
-
-        $payload['stats'] = $data['stats'];
-
-        return $payload;
-    }
-
-    /**
-     * @param mixed $template
-     * @param array<string, mixed> $data
-     *
-     * @return mixed
-     */
-    private function replacePlaceholders($template, array $data)
-    {
-        if (is_string($template)) {
-            $value = trim($template);
-            if (preg_match('/^\$\{([a-z0-9._-]+)\}$/i', $value, $matches) === 1) {
-                return $this->getValueByPath($data, $matches[1]);
-            }
-
-            return $template;
-        }
-
-        if (is_array($template)) {
-            $result = [];
-            foreach ($template as $key => $value) {
-                $result[$key] = $this->replacePlaceholders($value, $data);
-            }
-
-            return $result;
-        }
-
-        return $template;
     }
 
     /**
@@ -1236,6 +2463,38 @@ final class ExportAgent
         }
 
         return $result;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractDestinationOverrides(array $parameters): array
+    {
+        $overrides = [];
+
+        if (isset($parameters['path'])) {
+            $overrides['path'] = $parameters['path'];
+        }
+
+        if (isset($parameters['format'])) {
+            $overrides['format'] = $parameters['format'];
+        }
+
+        if (array_key_exists('response', $parameters)) {
+            $overrides['response'] = $parameters['response'];
+        }
+
+        if (array_key_exists('save', $parameters)) {
+            $overrides['save'] = $parameters['save'];
+        }
+
+        if (array_key_exists('nest_children', $parameters)) {
+            $overrides['nest_children'] = $parameters['nest_children'];
+        } elseif (array_key_exists('nest-children', $parameters)) {
+            $overrides['nest_children'] = $parameters['nest-children'];
+        }
+
+        return $overrides;
     }
 
     /**
