@@ -93,6 +93,7 @@ php cli.php "preset vars focus-scene"
 - ExportAgent queries presets through `BrainRepository::getPreset()`; presets flagged as `read_only`/`immutable` guard system defaults.
 - Layout ids referenced by presets (`meta.layout`) are fetched via `getExportLayout()` and rendered by `renderLayout()`.
 - FilterEngine receives placeholder maps derived from preset parameters (`${param.*}` / `${var.*}`) and the current project slug (`${project}`).
+- ResolverEngine reuses the same parameter bag, so preset variables automatically flow into `[ref]` / `[query]` expressions during exports.
 
 ## Error Handling
 - Missing preset → `Preset "<slug>" not found.`

@@ -106,6 +106,22 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
           - __construct(AavionDB\Core\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger)
           - selectEntities(string $projectSlug, array $filters, array $options = []): array
           - passesFilters(string $projectSlug, string $entitySlug, array $filters, array $options = []): bool
+    - **Resolver**
+      - **ResolverContext**
+        - `AavionDB\Core\Resolver\ResolverContext`
+          - __construct(string $project, string $entity, ?string $version = null, array $params = [], array $payload = [], ?string $path = null)
+          - project(): string
+          - entity(): string
+          - uid(): string
+          - version(): ?string
+          - params(): array
+          - payload(): array
+          - path(): ?string
+      - **ResolverEngine**
+        - `AavionDB\Core\Resolver\ResolverEngine`
+          - __construct(AavionDB\Core\Storage\BrainRepository $brains, Psr\Log\LoggerInterface $logger, ?AavionDB\Core\Filters\FilterEngine $filters = null, int $maxDepth = 6)
+          - resolvePayload(array $payload, AavionDB\Core\Resolver\ResolverContext $context): array
+          - stripPayload(array $payload): array
     - **Hashing**
       - **CanonicalJson**
         - `AavionDB\Core\Hashing\CanonicalJson`
@@ -263,6 +279,11 @@ Inventory of all classes in the `AavionDB\*` namespace with their public methods
     - **Export**
       - **ExportAgent**
         - `AavionDB\Modules\Export\ExportAgent`
+          - __construct(AavionDB\Core\Modules\ModuleContext $context)
+          - register(): void
+    - **Resolver**
+      - **ResolverAgent**
+        - `AavionDB\Modules\Resolver\ResolverAgent`
           - __construct(AavionDB\Core\Modules\ModuleContext $context)
           - register(): void
     - **Preset**

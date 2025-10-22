@@ -45,9 +45,10 @@ Quick overview of the currently available CLI commands, including aliases, usage
     - `remove` – Deactivate active versions (`entity remove <project> <entity-path[,entity2]> [--recursive=0|1]`).
     - `restore` – Restore a specific version (`entity restore <project> <entity> <@version|#commit>`).
     - `save` – Persist a (possibly merged) payload or reparent an entity (`entity save <project> <entity-path[@version|#commit][:fieldset[@version|#commit]]> {json} [--parent=path]`).
-    - `show` – Show the active or selected version (`entity show <project> <entity> [@version|#commit]`).
+    - `show` – Show the active or selected version (`entity show <project> <entity> [@version|#commit]`). Resolver shortcodes are expanded before the payload is returned.
     - `versions` – List versions for an entity (`entity versions <project> <entity>`).
-- `export` – Generate `context-unified-v2` bundles (`export <project|*> [entities] [--preset=slug] [--param.foo=value|--var.foo=value] [description="..."] [usage="..."]`).
+- `export` – Generate `context-unified-v2` bundles (`export <project|*> [entities] [--preset=slug] [--param.foo=value|--var.foo=value] [description="..."] [usage="..."]`). Resolver shortcodes are expanded as part of the export pipeline.
+- `resolve` – Expand a single `[ref]`/`[query]` shortcode in the context of an entity (`resolve [shortcode] --source=project.entity[@version|#commit] [--param.foo=value]`).
 - `preset`
     - `list` – List presets stored in the system brain (`preset list`).
     - `show` – Inspect a preset definition (`preset show <slug>`).

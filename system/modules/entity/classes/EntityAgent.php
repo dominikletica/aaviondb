@@ -7,6 +7,8 @@ namespace AavionDB\Modules\Entity;
 use AavionDB\Core\CommandResponse;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
+use AavionDB\Core\Resolver\ResolverContext;
+use AavionDB\Core\Resolver\ResolverEngine;
 use AavionDB\Core\Storage\BrainRepository;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -41,11 +43,14 @@ final class EntityAgent
 
     private LoggerInterface $logger;
 
+    private ResolverEngine $resolver;
+
     public function __construct(ModuleContext $context)
     {
         $this->context = $context;
         $this->brains = $context->brains();
         $this->logger = $context->logger();
+        $this->resolver = new ResolverEngine($this->brains, $this->logger);
     }
 
     public function register(): void
@@ -449,6 +454,23 @@ final class EntityAgent
         try {
             $version = $this->brains->getEntityVersion($project, $entitySlug, $reference !== '' ? $reference : null);
 
+            $meta = $this->brains->entityReport($project, $entitySlug, true);
+            $pathString = isset($meta['path_string']) && is_string($meta['path_string'])
+                ? trim($meta['path_string'])
+                : null;
+
+            if (isset($version['payload']) && is_array($version['payload'])) {
+                $resolverContext = new ResolverContext(
+                    $project,
+                    $entitySlug,
+                    isset($version['version']) ? (string) $version['version'] : null,
+                    [],
+                    $version['payload'],
+                    $pathString
+                );
+                $version['payload'] = $this->resolver->resolvePayload($version['payload'], $resolverContext);
+            }
+
             return CommandResponse::success('entity show', [
                 'project' => $project,
                 'entity' => $entitySlug,
@@ -521,6 +543,10 @@ final class EntityAgent
             } else {
                 return CommandResponse::error('entity save', 'JSON payload is required (object or array).');
             }
+        }
+
+        if (\is_array($payload)) {
+            $payload = $this->resolver->stripPayload($payload);
         }
 
         $meta = [];

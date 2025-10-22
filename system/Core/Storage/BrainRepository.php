@@ -64,6 +64,8 @@ final class BrainRepository
 {
     private const DEFAULT_HIERARCHY_MAX_DEPTH = 10;
 
+    private const SHORTCODE_STRIP_PATTERN = '/\[(ref|query)([^\]]*)\](.*?)\[\/\1\]/is';
+
     private PathLocator $paths;
 
     private EventBus $events;
@@ -1692,6 +1694,8 @@ final class BrainRepository
             $hierarchyInfo = $this->resolveParentPath($brain, $slugProject, $slugEntity, $desiredPath);
             $this->assignEntityParent($brain, $slugProject, $slugEntity, $hierarchyInfo['parent']);
         }
+
+        $payload = $this->sanitizeResolverArtifacts($payload);
 
         $mergePayload = $this->extractMergeOption($options['merge'] ?? null);
         $sourceReference = $this->normalizeReference($options['source_reference'] ?? null);
@@ -4215,6 +4219,47 @@ final class BrainRepository
         }
 
         return $this->schemaValidator;
+    }
+
+    /**
+     * Removes rendered resolver output while keeping original shortcodes intact.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private function sanitizeResolverArtifacts(array $payload): array
+    {
+        $result = [];
+
+        foreach ($payload as $key => $value) {
+            $result[$key] = $this->stripResolverArtifacts($value);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param mixed $value
+     *
+     * @return mixed
+     */
+    private function stripResolverArtifacts($value)
+    {
+        if (\is_string($value)) {
+            return \preg_replace(self::SHORTCODE_STRIP_PATTERN, '[\\1\\2]', $value) ?? $value;
+        }
+
+        if (\is_array($value)) {
+            $result = [];
+            foreach ($value as $key => $entry) {
+                $result[$key] = $this->stripResolverArtifacts($entry);
+            }
+
+            return $result;
+        }
+
+        return $value;
     }
 
     /**

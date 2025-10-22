@@ -23,7 +23,7 @@
 - **ExportAgent (`export`)**: [x] CLI/REST exports; [x] preset-driven selection & transforms; [x] regex payload filters; [ ] destinations & scheduler hooks; [ ] advanced LLM/schema profiles.
 - **AuthAgent (`auth`)**: [x] Token lifecycle commands; [ ] audit logging and bootstrap guidance; [ ] scoped key/role management; [ ] PHPUnit coverage (grant/revoke/reset).
 - **ApiAgent (`api`)**: [x] `serve/stop/status/reset`; [ ] rolling request telemetry; [ ] scheduler/log automation for maintenance windows; [ ] batched/async execution hooks.
-- **UiAgent (`ui`)**: [ ] Studio integration hooks; [ ] optional console tooling; [ ] asset and security documentation for external UIs.
+- **UiAgent (`ui`)**: [ ] Studio integration hooks (UI lookup/load/validate/save aliases, resolver-aware lookups, non-resolved entity access, draft space); [ ] optional console tooling; [ ] asset and security documentation for external UIs.
 - **LogAgent (`log`)**: [x] Tail/rotate/cleanup; [ ] log storage abstraction; [ ] optional streaming/compression enhancements.
 - **EventsAgent (`events`)**: [x] Listener diagnostics; [ ] emitted-event telemetry; [ ] streaming/subscription endpoints.
 - **SchedulerAgent (`scheduler`)**: [x] Task CRUD + `cron`; [ ] dry-run/preview mode; [ ] cron expression/priority scheduling; [ ] PHPUnit coverage.
@@ -31,12 +31,13 @@
 - **SecurityAgent (`security`)**: [x] Rate limiting + lockdown + purge; [ ] trusted-client allow lists/bypass rules; [ ] audit trail integration.
 - **SchemaAgent (`schema`)**: [x] List/show/lint/create/update/delete; [ ] Studio integration hooks; [ ] schema usage metrics; [ ] PHPUnit coverage.
 - **PresetAgent (`preset`)**: [x] CLI CRUD/import/export/vars; [x] default preset/layout bootstrap; [ ] richer preset/layout library and Studio integration guidance.
+- **ResolverAgent (`resolver`)**: [x] Single-shot shortcode resolution; [ ] diagnostics (lint/report) and batch tooling.
 
 ### Roadmap to Alpha (pre-tests)
 1. **Brain maintenance** – Extend `brain cleanup` with dry-run/retention preview and add compaction/repair helpers; update docs. *(DONE – backups still tracked separately below.)*
 2. **Cascade behaviour** – Implement project/entity cascade hooks (auto-archive on project removal) and align documentation. *(DONE – follow-up: refine restore/reactivation ergonomics and cascade diagnostics.)*
 3. **Configuration upgrades** – Add bulk import/export commands and config audit logging. *(Bulk JSON payload + audit events implemented; file-based import/export skipped by user request.)*
-4. **Filter & Resolver engine** – Ship the reusable filter/query DSL + resolver pipeline (preset/entity/export integration, `[ref …]` expansion, placeholder docs) per `2025-10-21-IDEAS`.
+4. **Filter & Resolver engine** – Ship the reusable filter/query DSL + resolver pipeline (preset/entity/export integration, `[ref …]` expansion, placeholder docs) per `2025-10-21-IDEAS`. *(DONE – ResolverEngine resolves `[ref]/[query]` in entity show & exports; shortcode docs live under `docs/dev/partials/resolver-and-shortcodes.md`.)*
 5. **Export destinations & profiles** – Introduce preset destinations (disk/response) and advanced LLM/schema-aware profiles once the resolver lands.
 6. **Scheduler enhancements** – Provide dry-run/preview mode, retention policies, and cron-expression support.
 7. **Cache warmup** – Add command(s) to pre-build cache artefacts for heavy exports/schemas.
@@ -200,3 +201,10 @@
 - Rebuilt `ExportAgent` around the new preset infrastructure: parameter parsing, FilterEngine integration, flattened `context-unified-v2` rendering, project/index/stats aggregation.
 - Updated user/developer docs (exports, preset module, error handling), command/class references, and class map to reflect the new workflow.
 - Next focus: continue Roadmap Step 4 (export destinations & advanced profiles) and document remaining preset/policy follow-ups.
+
+## 2025-10-22 – Morning Session
+
+- Delivered ResolverEngine enhancements: caller hierarchy awareness, `{record.url}`, `{record.url_relative}`, `{record.url_absolute}` helpers, and consistent relative path generation.
+- Added `ResolverAgent` with `resolve [shortcode] --source=project.entity[@version|#commit]` for quick CLI/REST previews, sharing parameter logic with ExportAgent.
+- Synced documentation (developer & user manuals, resolver module reference, command/class maps) and refreshed examples to highlight new link helpers.
+- Module checklist updated with resolver status; docs confirm `[query]` shortcodes reuse FilterEngine for selection.

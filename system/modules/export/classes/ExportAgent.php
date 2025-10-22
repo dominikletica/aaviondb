@@ -8,6 +8,8 @@ use AavionDB\Core\CommandResponse;
 use AavionDB\Core\Filters\FilterEngine;
 use AavionDB\Core\Modules\ModuleContext;
 use AavionDB\Core\ParserContext;
+use AavionDB\Core\Resolver\ResolverContext;
+use AavionDB\Core\Resolver\ResolverEngine;
 use AavionDB\Core\Storage\BrainRepository;
 use DateTimeImmutable;
 use InvalidArgumentException;
@@ -50,12 +52,15 @@ final class ExportAgent
 
     private FilterEngine $filters;
 
+    private ResolverEngine $resolver;
+
     public function __construct(ModuleContext $context)
     {
         $this->context = $context;
         $this->brains = $context->brains();
         $this->logger = $context->logger();
         $this->filters = new FilterEngine($this->brains, $this->logger);
+        $this->resolver = new ResolverEngine($this->brains, $this->logger, $this->filters);
     }
 
     public function register(): void
@@ -648,7 +653,10 @@ final class ExportAgent
                 $entitySlug,
                 $selectors,
                 $options['transform'] ?? ['whitelist' => [], 'blacklist' => [], 'post' => []],
-                $topology
+                $topology,
+                [
+                    'params' => $options['params'] ?? [],
+                ]
             );
 
             if ($record['entity'] === null) {
@@ -882,6 +890,7 @@ final class ExportAgent
     /**
      * @param array<int, array<string, mixed>> $selectors
      * @param array<string, mixed>             $topology
+     * @param array<string, mixed>             $options
      *
      * @return array{entity: ?array<string, mixed>, version_count: int}
      */
@@ -890,12 +899,16 @@ final class ExportAgent
         string $entitySlug,
         array $selectors,
         array $transform,
-        array $topology
+        array $topology,
+        array $options = []
     ): array {
         $summary = $this->brains->entityReport($projectSlug, $entitySlug, true);
         $versionsMeta = isset($summary['versions']) && is_array($summary['versions'])
             ? $summary['versions']
             : [];
+        $pathString = isset($summary['path_string']) && is_string($summary['path_string'])
+            ? trim($summary['path_string'])
+            : null;
 
         $versionsByNumber = [];
         $versionsByCommit = [];
@@ -915,6 +928,10 @@ final class ExportAgent
                 $versionsByCommit[$commitHash] = $versionMeta;
             }
         }
+
+        $resolverParams = isset($options['params']) && is_array($options['params'])
+            ? $options['params']
+            : [];
 
         $selectedVersions = [];
 
@@ -985,6 +1002,15 @@ final class ExportAgent
 
             if (is_array($payload)) {
                 $payload = $this->applyTransform($payload, $transform);
+                $resolverContext = new ResolverContext(
+                    $projectSlug,
+                    $entitySlug,
+                    isset($record['version']) ? (string) $record['version'] : null,
+                    $resolverParams,
+                    $payload,
+                    $pathString
+                );
+                $payload = $this->resolver->resolvePayload($payload, $resolverContext);
             }
 
             $payloadVersions[] = [

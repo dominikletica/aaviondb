@@ -7,6 +7,7 @@
 - Register the unified `export` command for CLI/REST/PHP clients.
 - Resolve manual and preset-driven slices (projects, entities, versions) and render deterministic JSON bundles.
 - Cooperate with `PresetAgent`, `PresetValidator`, and `FilterEngine` to evaluate filters, transforms, and layout templates.
+- Expand `[ref]` / `[query]` shortcodes before emitting payloads so exports include both the instruction and the resolved context.
 
 ## Command Behaviour
 - `export <slug[,slug…]> [entity[,entity[@version|#hash]]] [description="..."] [usage="..."]`
@@ -14,7 +15,7 @@
   - `description` populates meta/guide text; `usage` overrides the guide usage (falls back to `description`).
 - `export <slug> --preset=my-slice [--param.topic=timeline] [--var.timeline=3] [description=...] [usage=...]`
   - Preset mode; project discovery, entity selection, payload whitelists/blacklists, policies, and layout are defined by the preset.
-  - `${param.*}` placeholders resolve from `--param.*` (or the alias `--var.*`) arguments; you may supply multiple variables per command.
+  - `${param.*}` placeholders resolve from `--param.*` (or the alias `--var.*`) arguments; you may supply multiple variables per command. Resolver shortcodes inherit the same parameters when expanding `[ref]` / `[query]`.
 - `export *` – whole-brain export (no selectors).  
 - Presets cannot be combined with manual selectors; the preset fully defines the slice.
 
@@ -25,7 +26,7 @@
    - Loads preset/layout definitions (`BrainRepository::getPreset()`, `saveExportLayout()` ensures defaults).
    - Resolves project scopes via `resolveManualProjects()` or `resolveProjectsForPreset()`.
    - Uses `FilterEngine::selectEntities()` (with placeholder maps) to evaluate DSL filters; `passesFilters()` handles payload filters.
-   - `buildProjectSlice()` + `buildEntityRecord()` compose flattened entity payloads, applying transform whitelists/blacklists and hierarchy metadata.
+   - `buildProjectSlice()` + `buildEntityRecord()` compose flattened entity payloads, applying transform whitelists/blacklists, hierarchy metadata, and resolving shortcodes via `ResolverEngine`.
    - Aggregates stats/index data and renders the selected layout via `renderLayout()`.
 4. The command returns the rendered payload directly; hashing and persistence are delegated to cache subsystems.
 5. Studio and other clients can call `preset vars <slug>` (via PresetAgent) to discover placeholders, parameter types, defaults, and required flags needed for the export command.
@@ -33,6 +34,7 @@
 ## Key Collaborators
 - `AavionDB\Core\Storage\BrainRepository` – project/entity metadata, preset/layout storage.
 - `AavionDB\Core\Filters\FilterEngine` – shared DSL evaluator for entity/payload filters.
+- `AavionDB\Core\Resolver\ResolverEngine` – expands `[ref]` / `[query]` shortcodes and keeps exports aligned with resolver rules.
 - `AavionDB\Modules\Preset\PresetAgent` – CLI management for presets (CRUD/import/export) and default bootstrap.
 - `AavionDB\Modules\Preset\PresetValidator` – normalises preset definitions before persistence.
 - `AavionDB\Core\Modules\ModuleContext` – exposes repository/logger/debug utilities.
@@ -93,6 +95,8 @@
 - `meta.layout` ties the payload to an export layout stored alongside presets in the system brain.
 - `guide`, `policies`, `index`, and `stats` provide lightweight navigation hints for downstream consumers (Studio UI, cache warmers, LLM prompts).
 - Entities are flattened – parent/child links use canonical `project.slug` identifiers.
+- Payload strings include both shortcode markers and resolved output (`[ref …]value[/ref]` / `[query …]items[/query]`) so downstream consumers can inspect instructions and context simultaneously.
+- Resolver templates expose `{record.url}`, `{record.url_relative}`, and `{record.url_absolute}` for hierarchy-aware links (relative paths omit the project slug by default).
 - `payload_versions[]` always contains full payloads plus commit metadata for each selected revision.
 - Additional layouts can be registered via `BrainRepository::saveExportLayout()` and referenced from presets.
 

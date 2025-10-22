@@ -16,6 +16,7 @@ This manual acts as the technical reference for AavionDB. It explains architectu
 - [Filesystem Layout](./partials/file-structure.md) – directory responsibilities, writable locations, generated assets.
 - [Bootstrap Sequence](./partials/bootstrap.md) – from entry point to ready `AavionDB` instance.
 - [Entry Points](./partials/entry-points.md) – CLI, REST (`api.php`), PHP (`aaviondb.php`) call chains.
+- [Resolver & Shortcodes](./partials/resolver-and-shortcodes.md) – inline reference DSL, resolver contexts, save-time sanitising.
 
 ### 2. Storage & State
 - [Brains & Storage Engine](./partials/brains-and-storage.md) – persistence model, repository contracts, hashing.
@@ -52,6 +53,7 @@ Each module partial documents command handlers, call flows, primary classes, and
 | ExportAgent | [export](./partials/modules/export.md) |
 | PresetAgent | [preset](./partials/modules/preset.md) |
 | SchemaAgent | [schema](./partials/modules/schema.md) |
+| ResolverAgent | [resolver](./partials/modules/resolver.md) |
 | AuthAgent | [auth](./partials/modules/auth.md) |
 | ApiAgent | [api](./partials/modules/api.md) |
 | SchedulerAgent | [scheduler](./partials/modules/scheduler.md) |

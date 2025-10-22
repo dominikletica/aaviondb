@@ -129,6 +129,21 @@ Placeholders recognised by the exporter:
 
 ---
 
+## Inline Context in Exports
+
+- Entity payloads that use `[ref …]` or `[query …]` shortcodes are resolved during export. The JSON keeps the original marker and appends the resolved output, for example:
+
+  ```json
+  "summary": "[ref @storyverse.hero.payload profile.summary]Aria joined the fleet...[/ref]"
+  "cast": "[query project=storyverse|where=\"payload.tags contains squadron\"|format=markdown|template=\"* [{record.slug}]({record.url}) – {value.title}\"] * alpha_squad – Elite pilots\n * beta_squad – Recon detail\n[/query]"
+  ```
+
+- Resolver parameters inherit any `--param.*`/`--var.*` variables you pass to `export`, so presets can personalise queries without extra scripting.
+- Templates expose `{record.url}` (relative path from the calling entity), `{record.url_relative}`, and `{record.url_absolute}` (project-root absolute without the project slug). Append your own base URL if you need fully-qualified links.
+- Because the stored payload does not include the rendered suffix, you can re-import an export without duplicating resolved text—the engine removes the trailing portion during `save`.
+
+---
+
 ## Example Response (`context-unified-v2`)
 
 ```json

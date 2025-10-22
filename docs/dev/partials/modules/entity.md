@@ -8,12 +8,13 @@
 - Provide helpers for listing entities, inspecting versions, and restoring history.
 - Coordinate with ProjectAgent and ExportAgent for downstream workflows.
 - Maintain a project-scoped hierarchy map for parent/child relationships and cascade behaviour.
+- Resolve `[ref]` / `[query]` shortcodes when rendering payloads and keep stored payloads canonical by stripping resolved suffixes on save.
 
 ## Commands
 - `list entities <project> [parent/path]` ↔ `entity list <project> [parent/path] [with_versions=1]` – List entities with summary stats and optionally scope the result set to a hierarchy path.
 - `entity move <project> <source-path> <target-path> [--mode=merge|replace]` – Move an entity (and its subtree) to a new hierarchy path without mutating payloads.
 - `list versions <project> <entity>` ↔ `entity versions …` – List all versions for a given entity.
-- `show <project> <entity[@version|#commit]>` ↔ `entity show …` – Show the active (default) or selector-driven version.
+- `show <project> <entity[@version|#commit]>` ↔ `entity show …` – Show the active (default) or selector-driven version; resolver shortcodes are expanded before returning.
 - `save <project> <entity-path[@version|#commit][:fieldset[@version|#commit]]> {json} [fieldset=<id[@version|#commit]|"" ] [merge=1|0|replace] [--parent=path]` ↔ `entity save …` – Persist a new version. Payload merges into the selected source version (default active) and can bind a schema via inline selector or `fieldset` flag; `fieldset=""` detaches. Slash-separated paths (`parent/child`) assign hierarchy; missing parents produce warnings and fall back to the deepest valid level. Supplying `--parent` without a payload reparent the entity while preserving the existing payload (merge forced).
 - `remove <project> <entity-path[,entity2]> [--recursive=0|1]` ↔ `entity remove …` – Deactivate the active version of one or more entities (history retained). Without `--recursive=1`, direct children are promoted to the root level; `--recursive=1` archives the entire subtree in one command.
 - `delete <project> <entity-path[,entity2]> [--recursive=0|1]` ↔ `entity delete …` – Purge entire entities (all versions + commits). Default behaviour promotes children before deleting the parent; `--recursive=1` removes every descendant and their commits.
@@ -116,6 +117,11 @@ $response = AavionDB::run('entity save', [
 ]);
 ```
 
+### Resolver shortcodes
+- `entity show` resolves `[ref …]` and `[query …]` markers before returning payloads. Both commands and REST clients receive strings in the form `[ref …]resolved[/ref]`, so consumers can inspect the instruction and its output.
+- `save` strips rendered suffixes automatically; clients should continue to send only the original shortcode markers when persisting changes.
+- Resolver parameters inherit command variables (`--param.*`, `--var.*`) and the current payload, enabling context-sensitive references without bespoke code inside the agent.
+
 ## Error Handling
 - Missing `project`/`entity` parameters yield `status=error` with helpful messages (REST → 400).
 - Unknown entities or versions raise `StorageException` messages such as `Entity "hero" not found in project "demo".` (surfaced via `status=error`).
@@ -124,4 +130,5 @@ $response = AavionDB::run('entity save', [
 - Invalid merge references raise deterministic errors (`Merge source "@13" not found for entity "hero" in project "demo".`).
 - Hierarchy validation problems (cycle attempts, missing parents, depth truncation) and cascade results are surfaced as `warnings` inside both the response payload and `meta.warnings`; callers should display or log them.
 - Unsupported move modes return `status=error` with the message `Unsupported mode "..." (use merge or replace).`.
+- Resolver lookups that fail (missing entity/path/query) produce `<unresolved: …>` markers in-line and log a warning; callers should surface the placeholder so authors can adjust their references.
 - REST responses mirror CLI behaviour via `CommandResponse` objects.

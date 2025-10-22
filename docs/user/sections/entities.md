@@ -97,6 +97,26 @@ php cli.php "show storyverse hero#1c8f94"
 
 ---
 
+## Inline References & Queries
+
+Entity payloads can embed shortcodes that pull in related data on demand:
+
+- `[ref @project.slug.path.to.field]` – fetches a field from another entity (use `[index]` for array entries, e.g. `[ref @storyverse.hero.payload.traits[0]]`).
+- `[query project=storyverse|where="payload.tags contains pilot"|select=payload.summary|format=markdown]` – searches entities, applies filters, and formats the result.
+- In templates you can reference `{record.url}` (relative path to the target entity), `{record.url_relative}`, or `{record.url_absolute}` (project-root absolute without the project slug) to build deterministic links.
+- Nutze `resolve [shortcode] --source=project.entity` für schnelle Previews eines einzelnen Shortcodes über CLI/REST.
+
+When you display or export an entity, the payload keeps the instruction and shows the resolved result:
+
+```
+"bio": "[ref @storyverse.hero.payload profile.summary]Aria joined the fleet...[/ref]"
+"relationships": "[query project=storyverse|where=\"payload.participants contains hero\"|format=markdown] * mission_42: Rescue detail\n * debrief_07: Tactics review\n[/query]"
+```
+
+Adjust the shortcode, save the entity, and the framework strips the old `[...][/ref]`/`[/query]` suffix before storing the payload. That keeps data canonical while still giving LLMs and readers immediate context in responses.
+
+---
+
 ## Restore an Older Version
 
 ```bash
