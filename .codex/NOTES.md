@@ -217,4 +217,5 @@
 - Introduced missing-field policies (`settings.options.missing_payload`) with configurable warning/skip behaviour; warnings now bubble through payload/meta responses.
 - Moved export defaults (`export.response`, `export.save`, `export.format`, `export.nest_children`) into the system brain with automatic seeding; removed legacy `response_exports` / `save_exports` config flags.
 - Updated developer/user documentation (`docs/dev/partials/modules/export.md`, `modules/preset.md`, `docs/user/sections/exports.md`, `docs/dev/commands.md`, `docs/README.md`) and refreshed command references to reflect the new workflow and presets.
-- **Next:** polish additional preset examples (timeline/history), consider configurable warning channels, and align Studio-facing docs with the new placeholders/options.
+- Documented scheduler enhancement concept in `.codex/2025-10-22-scheduler-enhancements.md` (cron expressions, priorities, retries, preview command) as groundwork for Roadmap Step 6 (Scheduler enhancements).
+- **Next:** implement Roadmap Step 6 using the concept doc (cron expressions, priorities, retry/state tracking), then move on to UIAgent alias/translation planning once scheduler upgrades ship.
