@@ -1,8 +1,8 @@
 # Environment Notes
-OS: MacOs Tahoe 26.1
-Shell: /bin/zsh
-CLI-Tools: /opt/homebrew/bin
-Repository root: /Users/letica/Library/Mobile Documents/com~apple~CloudDocs/Repository/aaviondb
+OS: MacOs Tahoe 26.1  
+Shell: /bin/zsh  
+CLI-Tools: /opt/homebrew/bin  
+Repository root: /Users/letica/Library/Mobile Documents/com~apple~CloudDocs/Repository/aaviondb  
 
 ## Paths & Interpreters
 - php: /opt/homebrew/bin/php - Vesion: 8.4.13
