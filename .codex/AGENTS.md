@@ -45,3 +45,5 @@
 - README / user guide: [`README.md`](../README.md)
 - Release history: [`CHANGELOG.md`](../CHANGELOG.md)
 - Implementation notes and worklog: [`.codex/NOTES.md`](./NOTES.md)
+- Environment recap: [`.codex/environment.md`](./environment.md) (active interpreter paths, sandbox rules, helper commands)
+- Reusable scripts/snippets: drop them under [`.codex/toolbox/`](./toolbox/) when you create utilities worth keeping
